@@ -1,0 +1,25 @@
+---
+# ad_decoys — Señuelos (honeypots) y caminos falsos. SPOILER: autor del lab.
+#
+# El playbook 11-decoys.yml importa cada parte en el host adecuado:
+#   tasks/ad.yml     -> DCs (nyxcore.lab y veloran.corp): grupos, usuarios,
+#                       adminCount, AS-REP, ACLs falsas, SACL "honeytoken"
+#   tasks/share.yml  -> NYX-FS01: DeptConfigs\Archive + share IT-Archive$
+#   tasks/adcs.yml   -> NYX-CA01: plantilla señuelo con Enroll a grupo vacío
+#
+# Ningún objeto creado aquí concede privilegios reales ni toca los objetos de
+# la cadena FLAG-01..07. Si se ejecuta el rol sin tasks_from, aplica la parte
+# que corresponda al host.
+- name: "Señuelos de AD"
+  ansible.builtin.include_tasks: ad.yml
+  when: inventory_hostname in groups['domain_controllers']
+
+- name: "Señuelos en el file server"
+  ansible.builtin.include_tasks: share.yml
+  when: inventory_hostname in groups['file_servers']
+
+- name: "Plantilla ADCS señuelo"
+  ansible.builtin.include_tasks: adcs.yml
+  when:
+    - inventory_hostname in groups['ca_servers']
+    - decoy_adcs_enabled | bool

@@ -1,0 +1,73 @@
+---
+# ad_decoys / share.yml — se ejecuta en NYX-FS01 (después de la fase 09).
+#
+#   DeptConfigs\Archive\        -> hereda "Authenticated Users: lectura" del share
+#                                  real; configs obsoletas con credenciales MALAS
+#   \\NYX-FS01\IT-Archive$      -> share oculto, legible por Authenticated Users;
+#                                  copia de un GPO antiguo (Groups.xml con
+#                                  cpassword) y scripts viejos. Todo falso.
+#
+# Ambas carpetas llevan una SACL (Everyone / lectura / éxito) para que cada
+# acceso deje un 4663 en el log de Seguridad de NYX-FS01 (honeyfiles).
+# No se toca ningún archivo ni permiso de la cadena real (IT-Ops, Backups$).
+
+- name: "Crear carpetas señuelo"
+  ansible.windows.win_file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - '{{ share_path }}\{{ decoy_archive_subdir }}'
+    - "{{ decoy_share_path }}"
+
+- name: "Copiar configs obsoletas a DeptConfigs\\{{ decoy_archive_subdir }}"
+  ansible.windows.win_copy:
+    src: DeptConfigs-Archive/
+    dest: '{{ share_path }}\{{ decoy_archive_subdir }}\'
+
+- name: "Copiar contenido del share señuelo {{ decoy_share_name }}"
+  ansible.windows.win_copy:
+    src: IT-Archive/
+    dest: '{{ decoy_share_path }}\'
+
+- name: "NTFS {{ decoy_share_name }}: lectura para {{ decoy_share_reader }}"
+  ansible.windows.win_acl:
+    path: "{{ decoy_share_path }}"
+    user: "{{ decoy_share_reader }}"
+    rights: ReadAndExecute
+    type: allow
+    inherit: ContainerInherit, ObjectInherit
+    propagation: None
+    state: present
+
+- name: "Publicar share señuelo {{ decoy_share_name }}"
+  ansible.windows.win_share:
+    name: "{{ decoy_share_name }}"
+    path: "{{ decoy_share_path }}"
+    description: "Archivo IT 2015-2020 (solo lectura)"
+    full: "Administrators"
+    read: "{{ decoy_share_reader }}"
+    caching_mode: None
+
+- name: "SACL honeyfile (Everyone / lectura / éxito) en carpetas señuelo"
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $p = '{{ item }}'
+    $everyone = New-Object System.Security.Principal.SecurityIdentifier('S-1-1-0')
+    $acl = Get-Acl -Path $p -Audit
+    $has = $acl.GetAuditRules($true, $false, [System.Security.Principal.SecurityIdentifier]) |
+      Where-Object { $_.IdentityReference -eq $everyone }
+    if ($has) { 'UNCHANGED'; exit 0 }
+    $rule = New-Object System.Security.AccessControl.FileSystemAuditRule(
+      $everyone, 'ReadData', 'ContainerInherit, ObjectInherit', 'None', 'Success')
+    $acl.AddAuditRule($rule)
+    Set-Acl -Path $p -AclObject $acl
+    'CHANGED'
+  loop:
+    - '{{ share_path }}\{{ decoy_archive_subdir }}'
+    - "{{ decoy_share_path }}"
+  register: decoy_fs_sacl
+  changed_when: "'CHANGED' in decoy_fs_sacl.stdout"
+
+- name: "Asegurar auditoría 'File System' (4663) en el file server"
+  ansible.windows.win_shell: auditpol /set /subcategory:"File System" /success:enable
+  changed_when: false

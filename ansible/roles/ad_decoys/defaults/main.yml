@@ -1,0 +1,18 @@
+---
+# ad_decoys — valores por defecto (los reales viven en group_vars).
+decoys_enabled: true
+decoy_groups: []
+decoy_users: []
+decoy_acls: []
+decoy_ad_sacl: true
+decoy_groups_path: "{{ ad_groups_path | default('') }}"
+
+decoy_share_name: "IT-Archive$"
+decoy_share_path: 'C:\Shares\IT-Archive'
+decoy_share_reader: "Authenticated Users"
+decoy_archive_subdir: "Archive"
+share_path: 'C:\Shares\DeptConfigs'
+
+decoy_adcs_enabled: true
+decoy_adcs_template: "NyxVPNLegacyAuth"
+decoy_adcs_enroll_group: "VPN-Cert-Enroll"

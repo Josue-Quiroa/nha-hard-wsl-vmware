@@ -1,0 +1,105 @@
+---
+# ad_decoys / ad.yml — se ejecuta en el DC de cada dominio.
+
+- name: "Crear grupos señuelo"
+  microsoft.ad.group:
+    name: "{{ item.name }}"
+    scope: "{{ item.scope }}"
+    category: security
+    description: "{{ item.description | default(omit) }}"
+    path: "{{ decoy_groups_path if decoy_groups_path | length > 0 else omit }}"
+    state: present
+  loop: "{{ decoy_groups }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: "Crear usuarios señuelo (password aleatoria, solo al crear)"
+  microsoft.ad.user:
+    name: "{{ item.sam }}"
+    sam_account_name: "{{ item.sam }}"
+    upn: "{{ item.sam }}@{{ domain_fqdn }}"
+    firstname: "{{ item.given | default(omit) }}"
+    surname: "{{ item.surname | default(omit) }}"
+    display_name: "{{ item.given | default('') }} {{ item.surname | default('') }}"
+    password: "{{ item.password }}"
+    update_password: on_create
+    path: "{{ item.path }}"
+    description: "{{ item.description | default(omit) }}"
+    enabled: "{{ item.enabled | default(true) }}"
+    password_never_expires: "{{ item.password_never_expires | default(false) }}"
+    groups:
+      add: "{{ item.groups | default([]) }}"
+    spn:
+      set: "{{ item.spn | default([]) }}"
+    attributes:
+      set: >-
+        {{ {}
+           | combine({'msDS-SupportedEncryptionTypes': item.enc_types} if item.enc_types is defined else {})
+           | combine({'adminCount': item.admin_count} if item.admin_count is defined else {}) }}
+    state: present
+  loop: "{{ decoy_users }}"
+  loop_control:
+    label: "{{ item.sam }}"
+  # La password es aleatoria y no sirve de nada mostrarla
+  no_log: true
+
+- name: "Desactivar pre-autenticación Kerberos en señuelos AS-REP"
+  ansible.windows.win_shell: |
+    Import-Module ActiveDirectory
+    $u = Get-ADUser '{{ item.sam }}' -Properties DoesNotRequirePreAuth
+    if ($u.DoesNotRequirePreAuth) { 'OK'; exit 0 }
+    Set-ADAccountControl -Identity $u -DoesNotRequirePreAuth $true
+    'CHANGED'
+  loop: "{{ decoy_users | selectattr('no_preauth', 'defined') | selectattr('no_preauth') | list }}"
+  loop_control:
+    label: "{{ item.sam }}"
+  register: decoy_preauth
+  changed_when: "'CHANGED' in decoy_preauth.stdout"
+
+- name: "Aplicar ACLs señuelo (caminos falsos)"
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    Import-Module ActiveDirectory
+    $principal = Get-ADObject -Filter "sAMAccountName -eq '{{ item.principal }}'" -Properties objectSid
+    if (-not $principal) { throw "Principal {{ item.principal }} no existe" }
+    $sid = [System.Security.Principal.SecurityIdentifier]$principal.objectSid
+    $target = Get-ADObject -Filter "sAMAccountName -eq '{{ item.target_sam }}'"
+    if (-not $target) { throw "Destino {{ item.target_sam }} no existe" }
+    $acl = Get-Acl "AD:$($target.DistinguishedName)"
+    $right = '{{ item.right }}'
+    $existing = $acl.Access | Where-Object {
+      try { $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]) -eq $sid } catch { $false }
+    }
+    if ($existing | Where-Object { $_.ActiveDirectoryRights.ToString() -match $right }) { 'UNCHANGED'; exit 0 }
+    $ace = New-Object System.DirectoryServices.ActiveDirectoryAccessRule(
+      $sid, [System.DirectoryServices.ActiveDirectoryRights]$right, 'Allow')
+    $acl.AddAccessRule($ace)
+    Set-Acl -Path "AD:$($target.DistinguishedName)" -AclObject $acl
+    'CHANGED'
+  loop: "{{ decoy_acls }}"
+  loop_control:
+    label: "{{ item.principal }} -[{{ item.right }}]-> {{ item.target_sam }}"
+  register: decoy_acl
+  changed_when: "'CHANGED' in decoy_acl.stdout"
+
+- name: "SACL 'honeytoken': auditar lecturas de los objetos señuelo (4662)"
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    Import-Module ActiveDirectory
+    $obj = Get-ADObject -Filter "sAMAccountName -eq '{{ item }}'"
+    if (-not $obj) { 'MISSING'; exit 0 }
+    $path = "AD:$($obj.DistinguishedName)"
+    $everyone = New-Object System.Security.Principal.SecurityIdentifier('S-1-1-0')
+    $acl = Get-Acl -Path $path -Audit
+    $has = $acl.GetAuditRules($true, $false, [System.Security.Principal.SecurityIdentifier]) | Where-Object {
+      $_.IdentityReference -eq $everyone -and ($_.ActiveDirectoryRights -band [System.DirectoryServices.ActiveDirectoryRights]::ReadProperty) }
+    if ($has) { 'UNCHANGED'; exit 0 }
+    $rule = New-Object System.DirectoryServices.ActiveDirectoryAuditRule(
+      $everyone, [System.DirectoryServices.ActiveDirectoryRights]::ReadProperty, [System.Security.AccessControl.AuditFlags]::Success)
+    $acl.AddAuditRule($rule)
+    Set-Acl -Path $path -AclObject $acl
+    'CHANGED'
+  loop: "{{ (decoy_users | map(attribute='sam') | list) + (decoy_groups | map(attribute='name') | list) }}"
+  register: decoy_sacl
+  changed_when: "'CHANGED' in decoy_sacl.stdout"
+  when: decoy_ad_sacl | bool
