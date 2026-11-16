@@ -1,0 +1,6 @@
+---
+domain_fqdn: "veloran.corp"
+domain_netbios: "VELORAN"
+safe_mode_password: "ChangeMe#Lab2"
+ad_forest_mode: "WinThreshold"
+ad_domain_mode: "WinThreshold"

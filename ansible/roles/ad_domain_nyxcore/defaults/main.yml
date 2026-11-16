@@ -1,0 +1,6 @@
+---
+domain_fqdn: "nyxcore.lab"
+domain_netbios: "NYXCORE"
+safe_mode_password: "ChangeMe#Lab1"
+ad_forest_mode: "WinThreshold"
+ad_domain_mode: "WinThreshold"

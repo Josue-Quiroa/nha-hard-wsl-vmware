@@ -1,0 +1,68 @@
+---
+# ad_domain_veloran — Promueve VEL-DC01 como primer DC del bosque veloran.corp.
+# Idempotente: si ya es DC del dominio correcto, no hace nada.
+
+- name: "Fijar DNS a loopback antes de promover (DC se resuelve a sí mismo)"
+  ansible.windows.win_dns_client:
+    adapter_names: "*"
+    dns_servers:
+      - "127.0.0.1"
+  ignore_errors: true
+
+- name: "Instalar rol AD-Domain-Services + herramientas"
+  ansible.windows.win_feature:
+    name:
+      - AD-Domain-Services
+      - RSAT-AD-PowerShell
+      - RSAT-ADDS
+    state: present
+    include_management_tools: true
+  register: adds_feature
+
+- name: "Comprobar si ya es Domain Controller"
+  ansible.windows.win_shell: |
+    try {
+      $d = Get-ADDomain -ErrorAction Stop
+      "ISDC:" + $d.DNSRoot
+    } catch { "NOTDC" }
+  register: dc_check
+  changed_when: false
+  failed_when: false
+
+- name: "Promover VEL-DC01 a nuevo bosque {{ domain_fqdn }}"
+  ansible.windows.win_shell: |
+    $sm = ConvertTo-SecureString '{{ safe_mode_password }}' -AsPlainText -Force
+    Import-Module ADDSDeployment
+    Install-ADDSForest `
+      -DomainName '{{ domain_fqdn }}' `
+      -DomainNetbiosName '{{ domain_netbios }}' `
+      -ForestMode '{{ ad_forest_mode }}' `
+      -DomainMode '{{ ad_domain_mode }}' `
+      -InstallDns `
+      -SafeModeAdministratorPassword $sm `
+      -NoRebootOnCompletion `
+      -Force
+  when: "'NOTDC' in dc_check.stdout"
+  register: promote
+  failed_when:
+    - promote.rc is defined
+    - promote.rc != 0
+    - "'already' not in (promote.stderr | default('') | lower)"
+
+- name: "Reiniciar tras la promoción"
+  ansible.windows.win_reboot:
+    reboot_timeout: 900
+    post_reboot_delay: 45
+  when: promote is changed
+
+- name: "Esperar a que AD responda (Get-ADDomain)"
+  ansible.windows.win_shell: Get-ADDomain {{ domain_fqdn }} | Select-Object -ExpandProperty DNSRoot
+  register: ad_ready
+  until: ad_ready.rc == 0
+  retries: 20
+  delay: 20
+  changed_when: false
+
+- name: "Confirmar promoción"
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} es DC de {{ ad_ready.stdout | trim }}"
