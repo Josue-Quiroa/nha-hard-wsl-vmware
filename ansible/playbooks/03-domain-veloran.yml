@@ -1,0 +1,7 @@
+---
+# Fase 03 — Promover VEL-DC01 como primer DC del bosque veloran.corp.
+- name: "03 | Crear bosque veloran.corp"
+  hosts: veloran_dcs
+  gather_facts: true
+  roles:
+    - role: ad_domain_veloran

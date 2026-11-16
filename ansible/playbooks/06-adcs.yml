@@ -1,0 +1,7 @@
+---
+# Fase 06 — Instalar ADCS (Enterprise CA) en NYX-CA01.
+- name: "06 | ADCS Enterprise CA"
+  hosts: ca_servers
+  gather_facts: true
+  roles:
+    - role: ad_adcs

@@ -1,0 +1,7 @@
+---
+# Fase 04 — DNS condicional + trust de bosque bidireccional nyxcore <-> veloran.
+- name: "04 | Trust bidireccional entre bosques"
+  hosts: nyxcore_dcs
+  gather_facts: false
+  roles:
+    - role: ad_trust

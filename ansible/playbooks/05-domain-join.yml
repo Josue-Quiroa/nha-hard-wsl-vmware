@@ -1,0 +1,7 @@
+---
+# Fase 05 — Unir CA01, FS01 y JUMP al dominio nyxcore.lab.
+- name: "05 | Unir miembros a nyxcore.lab"
+  hosts: nyxcore_members
+  gather_facts: true
+  roles:
+    - role: ad_domain_join
