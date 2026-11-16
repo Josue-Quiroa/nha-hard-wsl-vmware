@@ -1,0 +1,42 @@
+# Ansible
+*.retry
+.vault_pass
+.vault_pass.txt
+*.vault_pass
+ansible/logs/
+*.log
+
+# Overrides locales de credenciales (no subir)
+ansible/group_vars/*.local.yml
+ansible/host_vars/*.local.yml
+ansible/group_vars/all/vault.yml
+credentials*.yml
+secrets*.yml
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Binarios de Sysmon descargados localmente
+ansible/roles/win_sysmon/files/Sysmon*.exe
+ansible/roles/win_sysmon/files/Sysmon*.zip
+ansible/roles/win_sysmon/files/Eula.txt
+
+# ISOs e imágenes de VM
+*.iso
+*.vmdk
+*.vmx
+*.vmxf
+*.nvram
+*.vmsd
+*.ova
+*.ovf
+
+# Editor / SO
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
