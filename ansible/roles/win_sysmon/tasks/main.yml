@@ -1,0 +1,73 @@
+---
+# win_sysmon — Instala Sysmon (Sysinternals) con una configuración inspirada
+# en SwiftOnSecurity. Defender permanece ACTIVO: Sysmon es un binario firmado
+# por Microsoft y no requiere exclusiones.
+#
+# Para usar la config completa, reemplaza files/sysmonconfig.xml por:
+#   - https://github.com/SwiftOnSecurity/sysmon-config   (sysmonconfig-export.xml)
+#   - https://github.com/olafhartong/sysmon-modular      (sysmonconfig.xml)
+
+- name: "Crear carpeta de instalación de Sysmon"
+  ansible.windows.win_file:
+    path: "{{ sysmon_install_dir }}"
+    state: directory
+
+# ---- Opción A: binario local (sin Internet en la VM) ------------------------
+- name: "Copiar Sysmon64.exe desde el nodo de control"
+  ansible.windows.win_copy:
+    src: Sysmon64.exe
+    dest: '{{ sysmon_install_dir }}\Sysmon64.exe'
+  when: sysmon_local_binary | bool
+
+# ---- Opción B: descarga desde Sysinternals ----------------------------------
+- name: "Descargar Sysmon.zip desde Sysinternals"
+  ansible.windows.win_get_url:
+    url: "{{ sysmon_download_url }}"
+    dest: '{{ sysmon_install_dir }}\Sysmon.zip'
+    force: false
+  register: sysmon_dl
+  retries: 3
+  delay: 10
+  until: sysmon_dl is succeeded
+  when: not (sysmon_local_binary | bool)
+
+- name: "Descomprimir Sysmon.zip"
+  ansible.windows.win_shell: |
+    Expand-Archive -Path '{{ sysmon_install_dir }}\Sysmon.zip' -DestinationPath '{{ sysmon_install_dir }}' -Force
+  args:
+    creates: '{{ sysmon_install_dir }}\Sysmon64.exe'
+  when: not (sysmon_local_binary | bool)
+
+# ---- Configuración ----------------------------------------------------------
+- name: "Copiar configuración de Sysmon"
+  ansible.windows.win_copy:
+    src: "{{ sysmon_config_file }}"
+    dest: '{{ sysmon_install_dir }}\{{ sysmon_config_file }}'
+  register: sysmon_cfg
+
+- name: "Comprobar si el servicio Sysmon ya existe"
+  ansible.windows.win_service_info:
+    name: "{{ sysmon_service_name }}"
+  register: sysmon_svc
+
+- name: "Instalar Sysmon con la configuración"
+  ansible.windows.win_command: >
+    "{{ sysmon_install_dir }}\Sysmon64.exe" -accepteula -i "{{ sysmon_install_dir }}\{{ sysmon_config_file }}"
+  when: not (sysmon_svc.exists | default(false))
+
+- name: "Actualizar config si cambió y Sysmon ya estaba instalado"
+  ansible.builtin.debug:
+    msg: "La configuración de Sysmon cambió; se recargará."
+  when: (sysmon_svc.exists | default(false)) and sysmon_cfg.changed
+  changed_when: true
+  notify: Reload sysmon config
+
+- name: "Asegurar servicio Sysmon iniciado"
+  ansible.windows.win_service:
+    name: "{{ sysmon_service_name }}"
+    state: started
+    start_mode: auto
+
+- name: "Ampliar el log Microsoft-Windows-Sysmon/Operational a 128 MB"
+  ansible.windows.win_shell: wevtutil sl Microsoft-Windows-Sysmon/Operational /ms:134217728
+  changed_when: false
