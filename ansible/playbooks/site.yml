@@ -18,3 +18,4 @@
 - import_playbook: 08-gpo-audit-kerberos.yml
 - import_playbook: 09-shares.yml
 - import_playbook: 10-acls-flags.yml
+- import_playbook: 11-decoys.yml

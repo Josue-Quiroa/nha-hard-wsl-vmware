@@ -16,3 +16,18 @@ FLAG-07    VEL-DC01   AD: VELORAN\svc_sync_veloran -> atributo "info"   VEL{3num
 #   cd ansible
 #   ansible NYX-JUMP -m ansible.windows.win_shell -a 'Get-Content C:\Lab\flags\flag01-foothold.txt'
 #   ansible VEL-DC01 -m ansible.windows.win_shell -a "(Get-ADUser svc_sync_veloran -Properties info).info"
+
+# ============================================================================
+#  SEÑUELOS (fase 11) — SPOILER: no tienen flags ni privilegios reales
+#  Fuente de verdad: group_vars/nyxcore.yml / veloran.yml (decoy_*)
+# ============================================================================
+# OBJETO                        CEBO                                       REALIDAD
+NYXCORE\svc_sql_old             SPN MSSQLSvc/nyx-sql01 (RC4)               pwd aleatoria 40c; NYX-SQL01 no existe
+NYXCORE\adm.backup              adminCount=1, pwd en Archive/GPP/.bat      pwds filtradas FALSAS; sin privilegios
+NYXCORE\ext.auditor2019         AS-REP roastable                           pwd aleatoria; reseteable por Helpdesk, sin acceso
+VELORAN\vel.svc_deploy          SPN, adminCount=1, Tier0-Ops-Legacy        pwd del script FALSA; grupo sin derechos
+ACL Helpdesk-T1 -> SrvOps-Legacy -> adm.backup                             fin del camino sin privilegios
+\\NYX-FS01\DeptConfigs\Archive  runbook + crm-sql.config                   credenciales falsas
+\\NYX-FS01\IT-Archive$          Groups.xml (cpassword), scripts viejos     cpassword = "Bkp.Adm#2019" (FALSA)
+ADCS NyxVPNLegacyAuth           parece ESC1                                Enroll solo para VPN-Cert-Enroll (vacío)
+# Detección: docs/DETECCION.md

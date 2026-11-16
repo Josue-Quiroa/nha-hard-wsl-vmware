@@ -6,7 +6,7 @@
 #   bash scripts/deploy.sh            # todas las fases, en orden
 #   bash scripts/deploy.sh ping       # solo prueba de conectividad
 #   bash scripts/deploy.sh 05         # solo una fase (por número)
-#   bash scripts/deploy.sh 06 10      # desde la fase 06 hasta la 10
+#   bash scripts/deploy.sh 06 11      # desde la fase 06 hasta la 11
 #   bash scripts/deploy.sh list       # lista las fases
 #
 # Variables de entorno opcionales:
@@ -46,6 +46,7 @@ PHASES=(
     "08:playbooks/08-gpo-audit-kerberos.yml:GPO de auditoría + ajustes Kerberos"
     "09:playbooks/09-shares.yml:Share DeptConfigs en NYX-FS01"
     "10:playbooks/10-acls-flags.yml:ACLs intencionales + flags + jump limitado"
+    "11:playbooks/11-decoys.yml:Señuelos (honeypots) y caminos falsos"
 )
 
 EXTRA_ARGS=()
@@ -73,15 +74,15 @@ list_phases() {
 }
 
 FROM="${1:-00}"
-TO="${2:-${1:-10}}"
+TO="${2:-${1:-11}}"
 
 case "${FROM}" in
     list|-l|--list) list_phases; exit 0 ;;
     ping)           FROM="00"; TO="00" ;;
-    all|"")         FROM="00"; TO="10" ;;
+    all|"")         FROM="00"; TO="11" ;;
 esac
 # Sin argumentos: todas las fases
-[[ $# -eq 0 ]] && { FROM="00"; TO="10"; }
+[[ $# -eq 0 ]] && { FROM="00"; TO="11"; }
 
 echo "[*] Log: ansible/${LOG}"
 for p in "${PHASES[@]}"; do

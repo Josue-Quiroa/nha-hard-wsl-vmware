@@ -72,6 +72,7 @@ El script `scripts/setup-wsl.sh` instala lo necesario.
 - Sysmon (config tipo SwiftOnSecurity / Olaf Hartong) se instala vía Ansible.
 - Advanced Audit Policy se habilita vía Ansible.
 - Hay flags, cuentas atractivas y configs “sucias” a propósito. Trátalo como red hostil de práctica.
+- También hay **señuelos**: cuentas honeypot y caminos falsos que no llevan a nada y dejan rastro en los logs.
 
 ---
 
@@ -146,9 +147,10 @@ Repite para las 5 IPs.
 | 08 | `08-gpo-audit-kerberos.yml` | GPO auditoría + Kerberos/contraseñas |
 | 09 | `09-shares.yml` | `\\NYX-FS01\DeptConfigs` (+ `Backups$`) |
 | 10 | `10-acls-flags.yml` | ACLs, flags, jump limitado (RDP + logging) |
+| 11 | `11-decoys.yml` | Señuelos: cuentas honeypot, caminos falsos, `IT-Archive$`, plantilla ADCS señuelo |
 
 Equivalente a todo de una vez: `cd ansible && ansible-playbook -i inventory.ini playbooks/site.yml`.
-Ejemplos: `bash scripts/deploy.sh ping` · `bash scripts/deploy.sh 06` · `bash scripts/deploy.sh 06 10`.
+Ejemplos: `bash scripts/deploy.sh ping` · `bash scripts/deploy.sh 06` · `bash scripts/deploy.sh 06 11`.
 
 ---
 
@@ -193,11 +195,12 @@ nha-hard-wsl-vmware/
 │   ├── requirements.yml
 │   ├── group_vars/
 │   ├── host_vars/
-│   ├── playbooks/
-│   └── roles/
+│   ├── playbooks/            # 00-ping … 11-decoys + site.yml
+│   └── roles/                # incluye ad_decoys (fase 11)
 ├── docs/
 │   ├── ERRORES.md            # WinRM, red, Ansible, Defender, Sysmon
-│   ├── ATTACK-PATHS.md       # Pistas / caminos de práctica
+│   ├── ATTACK-PATHS.md       # Pistas / caminos de práctica (+ spoiler de señuelos)
+│   ├── DETECCION.md          # Señuelos y cómo detectarlos (spoiler, autor)
 │   └── VARIACIONES.md        # Diferencias vs labs básicos
 ├── examples/
 │   ├── sample-flags.txt          # Spoiler de flags (autor del lab)
@@ -226,6 +229,8 @@ Configurados principalmente con Ansible:
 | Trust | `nyxcore.lab` ↔ `veloran.corp` |
 | Kerberos / ACL quirks | Roles `ad_users_groups`, `ad_gpo_kerberos`, `ad_acls_flags` |
 | Flags | Varias máquinas (ver `docs/ATTACK-PATHS.md`) |
+| Cuentas señuelo (honeypots) | `svc_sql_old`, `adm.backup`, `ext.auditor2019`, `VELORAN\vel.svc_deploy` (rol `ad_decoys`) |
+| Caminos falsos | ACLs a grupos sin derechos, GPP `cpassword` falso, `\\NYX-FS01\IT-Archive$`, `DeptConfigs\Archive`, plantilla ADCS con grupo vacío |
 
 Nombres de ejemplo (cámbialos si quieres):
 - Dominios: `nyxcore.lab`, `veloran.corp`
@@ -239,6 +244,7 @@ Nombres de ejemplo (cámbialos si quieres):
 - [Problemas comunes](docs/ERRORES.md) — WinRM, red, Ansible, Defender, Sysmon
 - [Caminos de ataque / flags](docs/ATTACK-PATHS.md)
 - [Variaciones respecto a labs básicos](docs/VARIACIONES.md)
+- [Detección de señuelos](docs/DETECCION.md) — spoiler, solo para el autor del lab
 
 ---
 
