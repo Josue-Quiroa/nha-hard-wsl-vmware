@@ -206,3 +206,19 @@ gpresult /r /scope computer
 auditpol /get /category:*
 ```
 Si la auditoría avanzada no se aplica, comprueba que `audit.csv` existe en `C:\Windows\SYSVOL\domain\Policies\{GUID}\Machine\Microsoft\Windows NT\Audit\` y que la GPO `LAB - Advanced Audit Policy` está enlazada a la raíz del dominio.
+
+---
+
+## 10. Señuelos (fase 11)
+
+### `Get-Acl -Audit` / `Set-Acl` falla con *privilegio no disponible*
+Las SACL requieren `SeSecurityPrivilege`. Ansible conecta como `Administrator`, que lo tiene; si usas otra cuenta, añádela a *Manage auditing and security log* o pon `decoy_ad_sacl: false`.
+
+### Defender pone en cuarentena `Groups.xml` o `nightly-export.ps1`
+Son archivos de texto inofensivos, pero algunas firmas detectan `cpassword` o credenciales en claro. Revisa `Get-MpThreatDetection`; **no desactives Defender**: restaura el archivo o añade una exclusión de ruta solo para `C:\Shares\IT-Archive` si lo necesitas.
+
+### La plantilla `NyxVPNLegacyAuth` falla con *debe estar VACÍO*
+La fase 11 se niega a dejar Enroll a `VPN-Cert-Enroll` si el grupo tiene miembros (la plantilla dejaría de ser un señuelo y abriría un ESC1 real). Vacía el grupo y vuelve a ejecutar `bash scripts/deploy.sh 11`.
+
+### Quiero cambiar la password de un señuelo
+No hace falta: es aleatoria y se fija solo al crear la cuenta. Si borras la cuenta y relanzas la fase 11, se genera otra distinta.

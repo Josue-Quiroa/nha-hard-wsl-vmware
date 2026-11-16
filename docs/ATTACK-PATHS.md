@@ -167,3 +167,28 @@ Cuando termines, practica la parte de administración. Lista de remediación sug
 9. Revisar membresías cross-forest y la necesidad real de un trust bidireccional.
 
 Comprueba después que cada corrección genera (o deja de generar) los eventos esperados en Security y Sysmon.
+
+> **Ojo:** no todo lo que parece vulnerable lleva a algún sitio. El lab incluye cuentas señuelo y caminos falsos (ver la sección de spoiler al final, solo para el autor). Parte del reto es distinguir un hallazgo real de un cebo.
+
+---
+
+## Señuelos y caminos falsos (SPOILER — solo autor del lab)
+
+> **No leas esta sección si vas a hacer el lab como alumno.** Está pensada para quien lo monta o lo imparte.
+
+Desde la **fase 11** el lab incluye cuentas honeypot y caminos que **parecen** prometedores pero no llevan a ninguna parte. Ninguno modifica ni acorta la cadena real (FLAG-01 → FLAG-07), y no hay flags en ellos.
+
+| Señuelo | Lo que ve el alumno | Realidad |
+|---|---|---|
+| `svc_sql_old` | Cuenta con SPN `MSSQLSvc/nyx-sql01.nyxcore.lab:1433`, solo RC4, en `SQL-Admins-Legacy` | Password aleatoria de 40 caracteres: el TGS no se rompe. `NYX-SQL01` no existe |
+| `adm.backup` | `adminCount=1`, OU `LegacyAdmins`, password en un runbook, un `.bat` y un `Groups.xml` (GPP) | Las tres passwords son **incorrectas**. La cuenta no tiene ningún privilegio |
+| `ext.auditor2019` | AS-REP roastable | Hash irrompible. Si Helpdesk la resetea, entra en una cuenta vacía |
+| `VELORAN\vel.svc_deploy` | SPN, `adminCount=1`, miembro de `Tier0-Ops-Legacy`, credencial en `nightly-export.ps1` | Password del script falsa; `Tier0-Ops-Legacy` no tiene derechos |
+| ACL `Helpdesk-T1 → GenericAll → SrvOps-Legacy → GenericWrite → adm.backup` | BloodHound muestra una ruta desde `j.cortez` | Termina en `adm.backup`, que no tiene privilegios |
+| `\\NYX-FS01\DeptConfigs\Archive\` | Configs "antiguas" con credenciales | Credenciales falsas, hosts inexistentes (`NYX-SQL01`, `NYX-BKP01`) |
+| `\\NYX-FS01\IT-Archive$` | Share oculto legible por todos, con export de GPO (`cpassword`) | El `cpassword` descifra a una password falsa |
+| Plantilla `NyxVPNLegacyAuth` | Parece ESC1 | Enroll solo para `VPN-Cert-Enroll`, grupo vacío que nadie puede modificar |
+
+Cada interacción con estos objetos genera eventos (4662, 4663, 4724, 4728, 4768, 4769, 4771, 4776, 4625, 5136, 5140). Los detalles, con consultas de ejemplo, están en [`DETECCION.md`](DETECCION.md).
+
+Para desplegar el lab **sin** señuelos: `decoys_enabled: false` en `ansible/group_vars/all.yml` (o simplemente no ejecutes la fase 11).

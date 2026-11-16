@@ -17,6 +17,7 @@ Este lab se inspira en entornos tipo NHA/GOAD, pero cambia varias decisiones par
 | ADCS | Ausente o ESC1 abierto a Domain Users | Plantilla legacy limitada a un grupo pequeño + Web Enrollment HTTP |
 | Shares | `\\DC\share` con `passwords.txt` | Share departamental con permisos "a medias" y secretos en cadenas de conexión |
 | Kerberos | Solo kerberoast de una cuenta obvia | SPN + RC4-only, AS-REP, delegación restringida con transición de protocolo, GPO de RC4 |
+| Señuelos | Ninguno: todo lo que encuentras sirve | **Cuentas honeypot** (Kerberoast/AS-REP irrompibles, `adminCount=1` sin privilegios), **caminos falsos** (ACLs, GPP `cpassword`, share de archivo, plantilla ADCS con grupo vacío) y SACLs que alertan al tocarlos |
 | Objetivo | Llegar a Domain Admin | Recorrer el camino **y** detectarlo **y** corregirlo |
 
 ## Detalle de las diferencias
@@ -42,6 +43,16 @@ Cada paso del camino de ataque deja eventos (4624, 4662, 4768, 4769, 4886/4887, 
 ### 5. Dos bosques
 Practicas DNS condicional, trusts de bosque, Foreign Security Principals y enumeración cross-forest.
 
+### 6. Señuelos y caminos falsos
+En una red real no todo lo "jugoso" es explotable, y los equipos de defensa plantan cebos a propósito. La fase 11 añade:
+- **Cuentas honeypot** en ambos bosques: una kerberoastable, una AS-REP roastable, una con `adminCount=1` y otra en un grupo "Tier 0". Todas con contraseñas aleatorias de 40 caracteres y **sin privilegios**.
+- **Credenciales falsas** en sitios creíbles: `DeptConfigs\Archive`, un share oculto `IT-Archive$` con un `Groups.xml` de GPP y scripts antiguos.
+- **Una ruta de ACLs** que BloodHound enseña desde el usuario inicial y que termina en una cuenta inútil.
+- **Una plantilla ADCS** con aspecto de ESC1 cuyo único grupo con Enroll está vacío.
+- **SACLs "honeytoken"** que convierten cualquier lectura o uso de los señuelos en eventos 4662/4663/4768/4769/4771.
+
+El alumno tiene que **verificar** cada hallazgo antes de invertir tiempo en él, y el defensor puede practicar alertas de alta confianza. Detalles (spoiler): [`DETECCION.md`](DETECCION.md).
+
 ## Variaciones opcionales (para hacerlo más difícil o distinto)
 
 Todas se cambian en `group_vars` / defaults de los roles:
@@ -54,4 +65,7 @@ Todas se cambian en `group_vars` / defaults de los roles:
 | `lockout_threshold: 5` | `roles/ad_gpo_kerberos/defaults` | Añade bloqueo: el spraying se vuelve arriesgado. |
 | `jump_powershell_logging: false` | `roles/ad_acls_flags/defaults` | Menos telemetría en el jump. |
 | `defender_fail_if_disabled: true` | `roles/win_defender_check/defaults` | El despliegue falla si Defender está apagado. |
+| `decoys_enabled: false` | `group_vars/all.yml` | Despliega el lab sin señuelos (fase 11 no hace nada). |
+| `decoy_adcs_enabled: false` | `group_vars/all.yml` | Sin plantilla ADCS señuelo. |
+| `decoy_ad_sacl: false` | `group_vars/all.yml` | Sin SACL honeytoken en AD (menos eventos 4662). |
 | Usuarios / ACLs | `group_vars/nyxcore.yml`, `veloran.yml` | Cambia nombres, contraseñas o ACLs para crear tus propios caminos. |
