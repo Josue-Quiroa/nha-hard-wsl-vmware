@@ -106,6 +106,36 @@ adcs_legacy_template: "NyxLegacyUserAuth" # plantilla "heredada" mal configurada
 adcs_template_enroll_group: "PKI-Operators"
 
 # -----------------------------------------------------------------------------
+# Señuelos (honeypots) y caminos falsos — fase 11 (rol ad_decoys)
+# -----------------------------------------------------------------------------
+# SPOILER (autor del lab): las cuentas/grupos/ficheros señuelo NO dan ningún
+# privilegio real. Están para hacer perder tiempo y, sobre todo, para practicar
+# DETECCIÓN (ver docs/DETECCION.md). La cadena real FLAG-01..07 no depende de
+# ellos. Pon decoys_enabled: false para desplegar el lab sin señuelos.
+decoys_enabled: true
+
+# Contraseña ALEATORIA (40 caracteres) que se genera en cada ejecución y no se
+# guarda en ningún sitio: ni el autor la conoce. Solo se aplica al CREAR la
+# cuenta (update_password: on_create) => hashes/tickets imposibles de romper.
+decoy_random_password: "{{ lookup('ansible.builtin.password', '/dev/null', length=40, chars=['ascii_letters', 'digits', '.-_#']) }}"
+
+# SACL de auditoría (Everyone/ReadProperty) en los objetos señuelo de AD:
+# cualquier lectura del objeto genera 4662 en el DC ("honeytoken").
+decoy_ad_sacl: true
+
+# Share señuelo en NYX-FS01 (oculto pero legible por Authenticated Users) y
+# carpeta "Archive" dentro de DeptConfigs con configs obsoletas.
+decoy_share_name: "IT-Archive$"
+decoy_share_path: 'C:\Shares\IT-Archive'
+decoy_archive_subdir: "Archive"
+
+# Plantilla ADCS señuelo: parece ESC1 pero el Enroll solo lo tiene un grupo
+# VACÍO que nadie alcanzable puede modificar.
+decoy_adcs_enabled: true
+decoy_adcs_template: "NyxVPNLegacyAuth"
+decoy_adcs_enroll_group: "VPN-Cert-Enroll"
+
+# -----------------------------------------------------------------------------
 # Flags (elementos de seguimiento). Ver examples/sample-flags.txt
 # readers: principal que puede LEER el archivo (además de SYSTEM/Administrators)
 # -----------------------------------------------------------------------------

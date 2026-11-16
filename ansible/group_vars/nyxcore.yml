@@ -134,3 +134,75 @@ local_group_memberships:
     - { group: "Administrators",       members: ["NYXCORE\\FileShare-Admins"] }
   NYX-CA01:
     - { group: "Administrators",       members: ["NYXCORE\\PKI-Operators"] }
+
+# =============================================================================
+# SEÑUELOS (honeypots) — rol ad_decoys, fase 11
+# -----------------------------------------------------------------------------
+#  SPOILER, solo para el autor del lab. Ninguno de estos objetos tiene
+#  privilegios reales ni forma parte de la cadena FLAG-01..07. Las marcas
+#  "DECOY" están SOLO en estos comentarios: en AD no queda ninguna pista.
+# =============================================================================
+decoy_groups:
+  # [DECOY] Suena a admin de SQL; no es admin de ninguna máquina.
+  - { name: "SQL-Admins-Legacy",    scope: "global", description: "Administradores SQL Server 2012 (cluster NYX-SQL01)" }
+  # [DECOY] Suena a Backup Operators; no está en ningún grupo local ni builtin.
+  - { name: "Backup-Admins-Legacy", scope: "global", description: "Admins de Veeam B&R - acceso a repositorios" }
+  # [DECOY] Helpdesk-T1 tiene GenericAll sobre él (camino falso). Sin derechos.
+  - { name: "SrvOps-Legacy",        scope: "global", description: "Operadores de servidores (pre-PAM). Pendiente de baja" }
+  # [DECOY] Único grupo con Enroll en la plantilla señuelo. SIEMPRE VACÍO.
+  - { name: "VPN-Cert-Enroll",      scope: "global", description: "Enrolamiento certificados VPN (Always On) - proyecto cancelado" }
+
+decoy_users:
+  # [DECOY] Kerberoastable: SPN hacia un host que NO existe (NYX-SQL01), solo
+  # RC4 para que "parezca fácil", pero password aleatoria de 40 caracteres.
+  # Pedir su TGS => 4769 en NYX-DC01 (Service Name = svc_sql_old).
+  - sam: "svc_sql_old"
+    given: "svc"
+    surname: "sql old"
+    password: "{{ decoy_random_password }}"
+    path: "OU=ServiceAccounts,OU=NyxCorp,{{ nyxcore_domain_dn }}"
+    description: "SQL Server 2012 - NYX-SQL01 (sa mapping). NO DESHABILITAR hasta migrar CRM"
+    password_never_expires: true
+    groups: ["SQL-Admins-Legacy"]
+    spn:
+      - "MSSQLSvc/nyx-sql01.nyxcore.lab:1433"
+      - "MSSQLSvc/nyx-sql01.nyxcore.lab"
+    enc_types: 4
+
+  # [DECOY] Parece admin (adminCount=1, OU LegacyAdmins, grupo de backup). La
+  # password "filtrada" en DeptConfigs\Archive y en IT-Archive$ (Groups.xml)
+  # es INCORRECTA: probarla => 4771/4776/4625 en el DC.
+  - sam: "adm.backup"
+    given: "Backup"
+    surname: "Admin"
+    password: "{{ decoy_random_password }}"
+    path: "OU=LegacyAdmins,OU=NyxCorp,{{ nyxcore_domain_dn }}"
+    description: "Cuenta admin de backups (Veeam). Gestionada por equipo de infraestructura"
+    password_never_expires: true
+    admin_count: 1
+    groups: ["Backup-Admins-Legacy"]
+
+  # [DECOY] AS-REP roastable con password aleatoria: el hash no se rompe.
+  # Está en OU=Contractors, así que Helpdesk-T1 puede resetearla (4724): si el
+  # alumno lo hace, entra con una cuenta que no tiene NINGÚN acceso.
+  - sam: "ext.auditor2019"
+    given: "Auditor"
+    surname: "Externo 2019"
+    password: "{{ decoy_random_password }}"
+    path: "OU=Contractors,OU=NyxCorp,{{ nyxcore_domain_dn }}"
+    description: "Auditoria externa ISO27001 (2019) - acceso temporal, sin preauth por app de la auditora"
+    password_never_expires: true
+    no_preauth: true
+    groups: []
+
+# [DECOY] Aristas de ACL que llevan a callejones sin salida:
+#   Helpdesk-T1 --GenericAll--> SrvOps-Legacy --GenericWrite--> adm.backup
+# Se puede recorrer (añadirse al grupo, escribir atributos de adm.backup), pero
+# al final del camino no hay ningún privilegio. Genera 4728/5136 en el DC.
+decoy_acls:
+  - principal: "Helpdesk-T1"
+    target_sam: "SrvOps-Legacy"
+    right: "GenericAll"
+  - principal: "SrvOps-Legacy"
+    target_sam: "adm.backup"
+    right: "GenericWrite"
