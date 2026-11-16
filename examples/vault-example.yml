@@ -1,0 +1,24 @@
+---
+# =============================================================================
+# examples/vault-example.yml — Cómo mover las contraseñas a ansible-vault
+# =============================================================================
+# 1. Crea un archivo de secretos cifrado:
+#      ansible-vault create ansible/group_vars/all/vault.yml
+#    (si usas esta opción, convierte group_vars/all.yml en el directorio
+#     group_vars/all/ con dos archivos: main.yml y vault.yml)
+#
+# 2. Pon dentro SOLO los secretos, con prefijo vault_:
+vault_lab_admin_password: "CambiaEsto!2026"
+vault_nyxcore_safe_mode_password: "CambiaEsto#DSRM1"
+vault_veloran_safe_mode_password: "CambiaEsto#DSRM2"
+#
+# 3. En group_vars/all/main.yml referencia las variables cifradas:
+#      lab_admin_password: "{{ vault_lab_admin_password }}"
+#      nyxcore_safe_mode_password: "{{ vault_nyxcore_safe_mode_password }}"
+#      veloran_safe_mode_password: "{{ vault_veloran_safe_mode_password }}"
+#
+# 4. Despliega pidiendo la contraseña del vault:
+#      VAULT=1 bash scripts/deploy.sh
+#    o con un archivo (NO lo subas a Git; está en .gitignore):
+#      echo 'mi-pass-vault' > ~/.vault_pass && chmod 600 ~/.vault_pass
+#      ANSIBLE_EXTRA="--vault-password-file ~/.vault_pass" bash scripts/deploy.sh

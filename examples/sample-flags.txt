@@ -1,0 +1,18 @@
+# ============================================================================
+#  sample-flags.txt  —  SPOILER: solo para el autor/instructor del laboratorio
+#  Fuente de verdad: ansible/group_vars/all.yml (lab_flags y flag07_value)
+#  Cambia los valores allí si reutilizas el lab con alumnos.
+# ============================================================================
+# ID       HOST       UBICACION                                         VALOR
+FLAG-01    NYX-JUMP   C:\Lab\flags\flag01-foothold.txt                  NYX{f00th0ld_0n_th3_jump_b0x_3c71}
+FLAG-02    NYX-FS01   C:\Shares\DeptConfigs\IT-Ops\flag02.txt           NYX{c0nf1g_f1l3s_n3v3r_f0rg3t_8a2e}
+FLAG-03    NYX-FS01   C:\Lab\flags\flag03-fs-admin.txt                  NYX{l0c4l_4dm1n_0n_f1l3s_51d0}
+FLAG-04    NYX-CA01   C:\Lab\flags\flag04-pki.txt                       NYX{c3rt1f1c4t3s_4r3_cr3d3nt14ls_d94b}
+FLAG-05    NYX-DC01   C:\Lab\flags\flag05-domain.txt                    NYX{nyxc0r3_d0m41n_0wn3d_2f6a}
+FLAG-06    VEL-DC01   C:\Lab\flags\flag06-veloran.txt                   VEL{tru5t_1s_n0t_4_b0und4ry_7e13}
+FLAG-07    VEL-DC01   AD: VELORAN\svc_sync_veloran -> atributo "info"   VEL{3num3r4t3_4cr0ss_th3_tru5t_a5c0}
+
+# Comprobación rápida desde WSL (como Administrator, tras desplegar):
+#   cd ansible
+#   ansible NYX-JUMP -m ansible.windows.win_shell -a 'Get-Content C:\Lab\flags\flag01-foothold.txt'
+#   ansible VEL-DC01 -m ansible.windows.win_shell -a "(Get-ADUser svc_sync_veloran -Properties info).info"
