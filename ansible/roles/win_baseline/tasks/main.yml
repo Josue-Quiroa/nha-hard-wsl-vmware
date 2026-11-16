@@ -1,0 +1,29 @@
+---
+# win_baseline — carpetas base del lab, zona horaria y notas de sincronización.
+# NOTA sobre tiempo/Kerberos: en un lab AD el clock skew > 5 min rompe Kerberos.
+# El DC PDC debe ser la fuente de tiempo; los miembros sincronizan contra el DC.
+# Aquí solo dejamos todo en UTC y habilitamos w32time; el dominio ajusta el resto.
+
+- name: "Crear carpetas base del laboratorio"
+  ansible.windows.win_file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - "{{ lab_root_dir }}"
+    - "{{ lab_flags_dir }}"
+    - "{{ lab_logs_dir }}"
+    - "{{ lab_tools_dir }}"
+
+- name: "Asegurar servicio de tiempo de Windows (w32time) iniciado"
+  ansible.windows.win_service:
+    name: w32time
+    state: started
+    start_mode: auto
+
+- name: "Marcar el host con su rol (archivo informativo)"
+  ansible.windows.win_copy:
+    dest: '{{ lab_root_dir }}\host-role.txt'
+    content: |
+      Host: {{ inventory_hostname }}
+      Rol:  {{ host_role | default('windows') }}
+      Lab:  nha-hard-wsl-vmware (SOLO LABORATORIO)

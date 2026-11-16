@@ -1,0 +1,30 @@
+---
+# win_audit_policy — Advanced Audit Policy LOCAL vía auditpol.exe.
+
+- name: "Forzar uso de subcategorías de Advanced Audit Policy"
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Control\Lsa
+    name: SCENoApplyLegacyAuditPolicy
+    data: 1
+    type: dword
+
+- name: "Configurar subcategorías de auditoría (auditpol)"
+  ansible.windows.win_shell: >
+    auditpol /set /subcategory:"{{ item.name }}"
+    {% if 'Success' in item.value %}/success:enable{% else %}/success:disable{% endif %}
+    {% if 'Failure' in item.value %}/failure:enable{% else %}/failure:disable{% endif %}
+  loop: "{{ audit_subcategories }}"
+  # auditpol no informa si hubo cambio real; lo tratamos como idempotente.
+  changed_when: false
+
+- name: "Habilitar inclusión de línea de comandos en el evento 4688"
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit
+    name: ProcessCreationIncludeCmdLine_Enabled
+    data: 1
+    type: dword
+  when: audit_cmdline_logging | bool
+
+- name: "Ampliar tamaño del log de Seguridad a 256 MB"
+  ansible.windows.win_shell: wevtutil sl Security /ms:268435456
+  changed_when: false

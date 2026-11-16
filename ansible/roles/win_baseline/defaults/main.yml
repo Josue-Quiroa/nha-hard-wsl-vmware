@@ -1,0 +1,5 @@
+---
+lab_root_dir: 'C:\Lab'
+lab_flags_dir: 'C:\Lab\flags'
+lab_logs_dir: 'C:\Lab\logs'
+lab_tools_dir: 'C:\Lab\tools'

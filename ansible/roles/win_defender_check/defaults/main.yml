@@ -1,0 +1,3 @@
+---
+# Este rol NUNCA desactiva Defender. Solo verifica/asegura que esté activo.
+defender_fail_if_disabled: false
