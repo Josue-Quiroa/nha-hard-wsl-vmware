@@ -1,0 +1,20 @@
+---
+audit_gpo_name: "LAB - Advanced Audit Policy"
+kerberos_gpo_name: "LAB - Kerberos Legacy Compat"
+
+# Kerberos Policy (Default Domain Policy). Valores por defecto de Windows:
+# 10 h / 7 días / 5 min. Cambiarlos sirve para practicar su revisión.
+kerberos_max_ticket_age: 10       # horas
+kerberos_max_renew_age: 7         # días
+kerberos_max_service_age: 600     # minutos
+kerberos_max_clock_skew: 5        # minutos
+
+# "Compatibilidad legacy": permitir RC4 junto a AES en todo el dominio.
+# 0x7FFFFFFC = RC4 + AES128 + AES256 + futuros. Muy habitual en entornos reales.
+kerberos_allow_rc4: true
+kerberos_supported_enctypes: 2147483644
+
+# Política de contraseñas del dominio "heredada" (algo débil, realista).
+weaken_password_policy: true
+min_password_length: 8
+lockout_threshold: 0               # 0 = sin bloqueo de cuenta (muy común en labs/legacy)

@@ -1,0 +1,7 @@
+{
+  "_comment": "LAB - configuracion de ejemplo sin secretos (los secretos estan en IT-Ops)",
+  "ErpEndpoint": "https://erp.nyxcore.lab/api",
+  "ReportServer": "http://nyx-fs01.nyxcore.lab/ReportServer",
+  "UseIntegratedAuth": false,
+  "CredentialSource": "\\\\NYX-FS01\\DeptConfigs\\IT-Ops\\db-conn.txt"
+}

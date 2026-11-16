@@ -1,0 +1,160 @@
+---
+# ad_gpo_kerberos — GPOs de dominio:
+#   1. "LAB - Advanced Audit Policy": audit.csv en SYSVOL + registro de la CSE
+#      de auditoría avanzada, enlazada a la raíz del dominio (aplica a DCs y
+#      miembros).
+#   2. "LAB - Kerberos Legacy Compat": tipos de cifrado Kerberos con RC4 por
+#      "compatibilidad" (configuración real y muy frecuente).
+#   3. Kerberos Policy en la Default Domain Policy (ticket lifetime, skew).
+#   4. Política de contraseñas del dominio heredada (opcional).
+#
+# Todo con PowerShell idempotente. Se ejecuta en el DC de cada dominio que
+# reciba este rol (por defecto, NYX-DC01).
+
+- name: "Asegurar GPMC / módulo GroupPolicy"
+  ansible.windows.win_feature:
+    name: GPMC
+    state: present
+
+# ---------------------------------------------------------------------------
+# 1. GPO de Advanced Audit Policy
+# ---------------------------------------------------------------------------
+- name: "Crear y enlazar GPO '{{ audit_gpo_name }}'"
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    Import-Module GroupPolicy
+    $out = @()
+    $gpo = Get-GPO -Name '{{ audit_gpo_name }}' -ErrorAction SilentlyContinue
+    if (-not $gpo) { $gpo = New-GPO -Name '{{ audit_gpo_name }}' -Comment 'Advanced Audit Policy del laboratorio'; $out += 'CREATED' }
+    $linked = (Get-GPInheritance -Target '{{ domain_dn }}').GpoLinks | Where-Object DisplayName -eq '{{ audit_gpo_name }}'
+    if (-not $linked) { New-GPLink -Guid $gpo.Id -Target '{{ domain_dn }}' -LinkEnabled Yes | Out-Null; $out += 'LINKED' }
+    # Valores de registro asociados (fuerzan subcategorías + cmdline en 4688)
+    Set-GPRegistryValue -Guid $gpo.Id -Key 'HKLM\System\CurrentControlSet\Control\Lsa' `
+      -ValueName 'SCENoApplyLegacyAuditPolicy' -Type DWord -Value 1 | Out-Null
+    Set-GPRegistryValue -Guid $gpo.Id -Key 'HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\System\Audit' `
+      -ValueName 'ProcessCreationIncludeCmdLine_Enabled' -Type DWord -Value 1 | Out-Null
+    if ($out.Count -eq 0) { 'UNCHANGED' } else { $out -join ',' }
+  register: audit_gpo
+  changed_when: "'CREATED' in audit_gpo.stdout or 'LINKED' in audit_gpo.stdout"
+
+- name: "Copiar audit.csv al SYSVOL del GPO y registrar la CSE de auditoría"
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    Import-Module GroupPolicy, ActiveDirectory
+    $gpo  = Get-GPO -Name '{{ audit_gpo_name }}'
+    $guid = '{' + $gpo.Id.ToString().ToUpper() + '}'
+    $root = "C:\Windows\SYSVOL\domain\Policies\$guid"
+    $dir  = "$root\Machine\Microsoft\Windows NT\Audit"
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+
+    $csv = @(
+      'Machine Name,Policy Target,Subcategory,Subcategory GUID,Inclusion Setting,Exclusion Setting,Setting Value'
+    {% for s in gpo_audit_subcategories %}
+      ',System,Audit {{ s.name }},{{ s.guid }},{{ s.label }},,{{ s.value }}'
+    {% endfor %}
+    ) -join "`r`n"
+
+    $target = "$dir\audit.csv"
+    $current = if (Test-Path $target) { Get-Content $target -Raw } else { '' }
+    if ($current.Trim() -eq $csv.Trim()) { 'UNCHANGED'; exit 0 }
+    Set-Content -Path $target -Value $csv -Encoding ASCII
+
+    # Registrar CSEs (Registry + Advanced Audit) en gPCMachineExtensionNames
+    $ext = '[{35378EAC-683F-11D2-A89A-00C04FBBCFA2}{D02B1F72-3407-48AE-BA88-E8213C6761F1}]' +
+           '[{F3CCC681-B74C-4060-9F26-CD84525DCA2A}{0F3F3735-573D-9804-99E4-AB2A69BA5FD4}]'
+    $gpcDN = "CN=$guid,CN=Policies,CN=System,{{ domain_dn }}"
+    $gpc = Get-ADObject $gpcDN -Properties versionNumber, gPCMachineExtensionNames
+    $newVer = [int]$gpc.versionNumber + 1
+    Set-ADObject $gpcDN -Replace @{ gPCMachineExtensionNames = $ext; versionNumber = $newVer }
+    (Get-Content "$root\GPT.INI") -replace 'Version=\d+', "Version=$newVer" | Set-Content "$root\GPT.INI" -Encoding ASCII
+    'CHANGED'
+  register: audit_csv
+  changed_when: "'CHANGED' in audit_csv.stdout"
+  vars:
+    gpo_audit_subcategories:
+      - { name: "Credential Validation",              guid: "{0cce923f-69ae-11d9-bed3-505054503030}", label: "Success and Failure", value: 3 }
+      - { name: "Kerberos Authentication Service",    guid: "{0cce9242-69ae-11d9-bed3-505054503030}", label: "Success and Failure", value: 3 }
+      - { name: "Kerberos Service Ticket Operations", guid: "{0cce9240-69ae-11d9-bed3-505054503030}", label: "Success and Failure", value: 3 }
+      - { name: "Logon",                              guid: "{0cce9215-69ae-11d9-bed3-505054503030}", label: "Success and Failure", value: 3 }
+      - { name: "Special Logon",                      guid: "{0cce921b-69ae-11d9-bed3-505054503030}", label: "Success", value: 1 }
+      - { name: "Process Creation",                   guid: "{0cce922b-69ae-11d9-bed3-505054503030}", label: "Success", value: 1 }
+      - { name: "Directory Service Access",           guid: "{0cce923b-69ae-11d9-bed3-505054503030}", label: "Success and Failure", value: 3 }
+      - { name: "Directory Service Changes",          guid: "{0cce923c-69ae-11d9-bed3-505054503030}", label: "Success and Failure", value: 3 }
+      - { name: "User Account Management",            guid: "{0cce9235-69ae-11d9-bed3-505054503030}", label: "Success and Failure", value: 3 }
+      - { name: "Computer Account Management",        guid: "{0cce9236-69ae-11d9-bed3-505054503030}", label: "Success and Failure", value: 3 }
+      - { name: "Security Group Management",          guid: "{0cce9237-69ae-11d9-bed3-505054503030}", label: "Success and Failure", value: 3 }
+      - { name: "File Share",                         guid: "{0cce9224-69ae-11d9-bed3-505054503030}", label: "Success and Failure", value: 3 }
+      - { name: "Detailed File Share",                guid: "{0cce9244-69ae-11d9-bed3-505054503030}", label: "Failure", value: 2 }
+      - { name: "Sensitive Privilege Use",            guid: "{0cce9228-69ae-11d9-bed3-505054503030}", label: "Success and Failure", value: 3 }
+      - { name: "Audit Policy Change",                guid: "{0cce922f-69ae-11d9-bed3-505054503030}", label: "Success and Failure", value: 3 }
+      - { name: "Certification Services",             guid: "{0cce9221-69ae-11d9-bed3-505054503030}", label: "Success and Failure", value: 3 }
+
+# ---------------------------------------------------------------------------
+# 2. GPO Kerberos "legacy compat" (RC4 permitido)
+# ---------------------------------------------------------------------------
+- name: "Crear y enlazar GPO '{{ kerberos_gpo_name }}' (RC4 + AES)"
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    Import-Module GroupPolicy
+    $out = @()
+    $gpo = Get-GPO -Name '{{ kerberos_gpo_name }}' -ErrorAction SilentlyContinue
+    if (-not $gpo) { $gpo = New-GPO -Name '{{ kerberos_gpo_name }}' -Comment 'Compatibilidad con apps legacy (RC4). Revisar.'; $out += 'CREATED' }
+    $linked = (Get-GPInheritance -Target '{{ domain_dn }}').GpoLinks | Where-Object DisplayName -eq '{{ kerberos_gpo_name }}'
+    if (-not $linked) { New-GPLink -Guid $gpo.Id -Target '{{ domain_dn }}' -LinkEnabled Yes | Out-Null; $out += 'LINKED' }
+    Set-GPRegistryValue -Guid $gpo.Id `
+      -Key 'HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters' `
+      -ValueName 'SupportedEncryptionTypes' -Type DWord -Value {{ kerberos_supported_enctypes }} | Out-Null
+    if ($out.Count -eq 0) { 'UNCHANGED' } else { $out -join ',' }
+  register: kerb_gpo
+  changed_when: "'CREATED' in kerb_gpo.stdout or 'LINKED' in kerb_gpo.stdout"
+  when: kerberos_allow_rc4 | bool
+
+# ---------------------------------------------------------------------------
+# 3. Kerberos Policy en la Default Domain Policy (GptTmpl.inf)
+# ---------------------------------------------------------------------------
+- name: "Ajustar [Kerberos Policy] en la Default Domain Policy"
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    Import-Module ActiveDirectory
+    $guid = '{31B2F340-016D-11D2-945F-00C04FB984F9}'
+    $root = "C:\Windows\SYSVOL\domain\Policies\$guid"
+    $inf  = "$root\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf"
+    $want = [ordered]@{
+      MaxTicketAge  = {{ kerberos_max_ticket_age }}
+      MaxRenewAge   = {{ kerberos_max_renew_age }}
+      MaxServiceAge = {{ kerberos_max_service_age }}
+      MaxClockSkew  = {{ kerberos_max_clock_skew }}
+    }
+    $txt = Get-Content $inf -Raw -Encoding Unicode
+    $orig = $txt
+    foreach ($k in $want.Keys) {
+      $txt = [regex]::Replace($txt, "(?m)^$k\s*=\s*\d+", "$k = $($want[$k])")
+    }
+    if ($txt -eq $orig) { 'UNCHANGED'; exit 0 }
+    Set-Content $inf -Value $txt -Encoding Unicode -NoNewline
+    $gpcDN = "CN=$guid,CN=Policies,CN=System,{{ domain_dn }}"
+    $ver = [int](Get-ADObject $gpcDN -Properties versionNumber).versionNumber + 1
+    Set-ADObject $gpcDN -Replace @{ versionNumber = $ver }
+    (Get-Content "$root\GPT.INI") -replace 'Version=\d+', "Version=$ver" | Set-Content "$root\GPT.INI" -Encoding ASCII
+    'CHANGED'
+  register: kerb_policy
+  changed_when: "'CHANGED' in kerb_policy.stdout"
+
+# ---------------------------------------------------------------------------
+# 4. Política de contraseñas heredada
+# ---------------------------------------------------------------------------
+- name: "Aplicar política de contraseñas del dominio 'heredada'"
+  ansible.windows.win_shell: |
+    Import-Module ActiveDirectory
+    $p = Get-ADDefaultDomainPasswordPolicy
+    if ($p.MinPasswordLength -eq {{ min_password_length }} -and $p.LockoutThreshold -eq {{ lockout_threshold }}) { 'UNCHANGED'; exit 0 }
+    Set-ADDefaultDomainPasswordPolicy -Identity '{{ domain_fqdn }}' `
+      -MinPasswordLength {{ min_password_length }} -LockoutThreshold {{ lockout_threshold }}
+    'CHANGED'
+  register: pwd_policy
+  changed_when: "'CHANGED' in pwd_policy.stdout"
+  when: weaken_password_policy | bool
+
+- name: "Forzar gpupdate en el DC"
+  ansible.windows.win_command: gpupdate /target:computer /force
+  changed_when: false

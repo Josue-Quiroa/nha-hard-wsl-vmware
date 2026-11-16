@@ -1,0 +1,11 @@
+---
+share_name: "DeptConfigs"
+share_path: 'C:\Shares\DeptConfigs'
+# Lectura a Authenticated Users en la raíz (demasiado amplio, realista).
+share_read_principal: "Authenticated Users"
+# Subcarpeta IT-Ops: solo lectura para este grupo (restricción "a medias").
+itops_reader_group: 'NYXCORE\IT-Ops-Readers'
+# Share oculto adicional (repositorio de backup)
+hidden_share_name: "Backups$"
+hidden_share_path: 'C:\Shares\Backups'
+hidden_share_reader: 'NYXCORE\FileShare-Admins'
