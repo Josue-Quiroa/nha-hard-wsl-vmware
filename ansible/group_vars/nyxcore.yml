@@ -1,0 +1,136 @@
+---
+# =============================================================================
+# group_vars/nyxcore.yml — Dominio nyxcore.lab
+# (NYX-DC01, NYX-CA01, NYX-FS01, NYX-JUMP)
+#  ##  LAB ONLY: contraseñas débiles/reutilizadas a propósito  ##
+# =============================================================================
+domain_fqdn: "{{ nyxcore_domain }}"
+domain_netbios: "{{ nyxcore_netbios }}"
+domain_dn: "{{ nyxcore_domain_dn }}"
+domain_dc_ip: "{{ nyxcore_dc_ip }}"
+domain_admin_user: "{{ nyxcore_domain_admin }}"
+domain_admin_password: "{{ nyxcore_domain_admin_password }}"
+
+# -----------------------------------------------------------------------------
+# OUs (se crean en orden; "path" relativo al DN del dominio)
+# -----------------------------------------------------------------------------
+ad_ous:
+  - { name: "NyxCorp",         path: "{{ nyxcore_domain_dn }}" }
+  - { name: "Staff",           path: "OU=NyxCorp,{{ nyxcore_domain_dn }}" }
+  - { name: "Contractors",     path: "OU=NyxCorp,{{ nyxcore_domain_dn }}" }
+  - { name: "ServiceAccounts", path: "OU=NyxCorp,{{ nyxcore_domain_dn }}" }
+  - { name: "LegacyAdmins",    path: "OU=NyxCorp,{{ nyxcore_domain_dn }}" }
+  - { name: "Groups",          path: "OU=NyxCorp,{{ nyxcore_domain_dn }}" }
+  - { name: "Servers",         path: "OU=NyxCorp,{{ nyxcore_domain_dn }}" }
+
+# -----------------------------------------------------------------------------
+# Grupos
+# -----------------------------------------------------------------------------
+ad_groups:
+  - { name: "Helpdesk-T1",      scope: "global", description: "Mesa de ayuda nivel 1" }
+  - { name: "Finance-Users",    scope: "global", description: "Usuarios de finanzas" }
+  - { name: "Jump-RDP-Users",   scope: "global", description: "Acceso RDP al servidor de salto NYX-JUMP" }
+  - { name: "IT-Ops-Readers",   scope: "global", description: "Lectura de \\\\NYX-FS01\\DeptConfigs\\IT-Ops" }
+  - { name: "SQL-Reporting",    scope: "global", description: "Cuentas de servicio de reporting" }
+  - { name: "FileShare-Admins", scope: "global", description: "Administradores locales de NYX-FS01" }
+  - { name: "PKI-Operators",    scope: "global", description: "Operadores de la PKI (admin local NYX-CA01)" }
+ad_groups_path: "OU=Groups,OU=NyxCorp,{{ nyxcore_domain_dn }}"
+
+# -----------------------------------------------------------------------------
+# Usuarios de ejemplo
+#   spn:           SPNs a registrar (kerberoasting)
+#   no_preauth:    true => DONT_REQ_PREAUTH (AS-REP roasting)
+#   enc_types:     msDS-SupportedEncryptionTypes (4 = solo RC4, "legacy")
+#   delegate_to:   constrained delegation (msDS-AllowedToDelegateTo)
+#   protocol_transition: TrustedToAuthForDelegation
+# -----------------------------------------------------------------------------
+ad_users:
+  # Punto de entrada: credenciales que se entregan al alumno.
+  - sam: "j.cortez"
+    given: "Julia"
+    surname: "Cortez"
+    password: "Cortez.Spring24!"
+    path: "OU=Staff,OU=NyxCorp,{{ nyxcore_domain_dn }}"
+    description: "Helpdesk T1 - turno manana"
+    groups: ["Helpdesk-T1", "Jump-RDP-Users"]
+
+  - sam: "m.quiroga"
+    given: "Marta"
+    surname: "Quiroga"
+    password: "Quiroga.Fin2023"           # reutilizada en un connection string del share
+    path: "OU=Staff,OU=NyxCorp,{{ nyxcore_domain_dn }}"
+    description: "Analista financiera"
+    groups: ["Finance-Users", "Jump-RDP-Users"]
+
+  # Cuenta de servicio antigua: password DOCUMENTADA en Description.
+  - sam: "svc_backup_legacy"
+    given: "svc"
+    surname: "backup legacy"
+    password: "{{ reused_password }}"
+    path: "OU=ServiceAccounts,OU=NyxCorp,{{ nyxcore_domain_dn }}"
+    description: "Legacy backup agent (Veeam 9.5). Pwd temporal: {{ reused_password }} - CHG-1142, rotar tras migracion"
+    password_never_expires: true
+    groups: ["IT-Ops-Readers"]
+
+  # Servicio de reporting: SPN + solo RC4 + delegación restringida.
+  - sam: "svc_sqlreport"
+    given: "svc"
+    surname: "sqlreport"
+    password: "Rep0rting#2018"
+    path: "OU=ServiceAccounts,OU=NyxCorp,{{ nyxcore_domain_dn }}"
+    description: "SSRS reporting - owner: equipo BI"
+    password_never_expires: true
+    groups: ["SQL-Reporting"]
+    spn:
+      - "MSSQLSvc/nyx-fs01.nyxcore.lab:1433"
+      - "MSSQLSvc/nyx-fs01.nyxcore.lab"
+    enc_types: 4
+    delegate_to:
+      - "cifs/nyx-fs01.nyxcore.lab"
+      - "cifs/NYX-FS01"
+    protocol_transition: true
+
+  # Admin heredado: no es Domain Admin, pero tiene privilegios "laterales".
+  - sam: "adm.old.helio"
+    given: "Helio"
+    surname: "Admin (legacy)"
+    password: "{{ helio_reused_password }}"
+    path: "OU=LegacyAdmins,OU=NyxCorp,{{ nyxcore_domain_dn }}"
+    description: "Cuenta admin antigua (migracion 2017). NO BORRAR - usada por tarea nocturna"
+    password_never_expires: true
+    groups: ["PKI-Operators", "FileShare-Admins"]
+
+  # Contratista con pre-autenticación Kerberos desactivada.
+  - sam: "r.lindqvist"
+    given: "Rune"
+    surname: "Lindqvist"
+    password: "Autumn2022!"
+    path: "OU=Contractors,OU=NyxCorp,{{ nyxcore_domain_dn }}"
+    description: "Contratista externo - acceso VPN legacy"
+    no_preauth: true
+    groups: []
+
+# -----------------------------------------------------------------------------
+# ACLs intencionales (las aplica ad_acls_flags en el DC)
+#   right: GenericWrite | GenericAll | ForceChangePassword | WriteProperty...
+# -----------------------------------------------------------------------------
+ad_acl_misconfigs:
+  # Un ticket viejo dio a finanzas control sobre el admin heredado.
+  - principal: "m.quiroga"
+    target_sam: "adm.old.helio"
+    right: "GenericWrite"
+    note: "Delegacion 'temporal' de 2021 nunca revertida"
+  # Helpdesk puede resetear passwords de contratistas (delegación realista).
+  - principal: "Helpdesk-T1"
+    target_ou: "OU=Contractors,OU=NyxCorp,{{ nyxcore_domain_dn }}"
+    right: "ForceChangePassword"
+    note: "Delegacion estandar de helpdesk sobre contratistas"
+
+# Grupos de dominio que se añaden a grupos LOCALES en los miembros
+local_group_memberships:
+  NYX-JUMP:
+    - { group: "Remote Desktop Users", members: ["NYXCORE\\Jump-RDP-Users"] }
+  NYX-FS01:
+    - { group: "Administrators",       members: ["NYXCORE\\FileShare-Admins"] }
+  NYX-CA01:
+    - { group: "Administrators",       members: ["NYXCORE\\PKI-Operators"] }

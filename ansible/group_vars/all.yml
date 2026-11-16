@@ -1,0 +1,147 @@
+---
+# =============================================================================
+# group_vars/all.yml — Variables globales del laboratorio nha-hard-wsl-vmware
+# =============================================================================
+#  ###############################################################
+#  ##  WARNING / ADVERTENCIA:  SOLO PARA LABORATORIO (LAB ONLY)  ##
+#  ###############################################################
+#  Todas las contraseñas de este archivo son de LABORATORIO, están en texto
+#  plano A PROPÓSITO y algunas son débiles o reutilizadas para simular un
+#  entorno real mal mantenido.
+#
+#   * NO reutilices nada de esto en producción.
+#   * NO expongas el lab a Internet (usa red host-only).
+#   * Cuando quieras, cifra este archivo con ansible-vault:
+#         ansible-vault encrypt ansible/group_vars/all.yml
+#     y despliega con:   VAULT=1 bash scripts/deploy.sh
+#     (ver examples/vault-example.yml)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Conexión inicial (Administrator local de cada VM)
+# -----------------------------------------------------------------------------
+# Usa ESTA MISMA contraseña como Administrator local al instalar las 5 VMs.
+# Al promover los DCs, esa contraseña pasa a ser la del Administrator de cada
+# dominio, así que Ansible sigue conectando con las mismas credenciales.
+lab_admin_password: "Nyx!Lab-Adm1n2026"          # LAB ONLY — cámbiala si quieres
+
+ansible_user: "Administrator"
+ansible_password: "{{ lab_admin_password }}"
+
+# -----------------------------------------------------------------------------
+# Dominios / bosques
+# -----------------------------------------------------------------------------
+nyxcore_domain: "nyxcore.lab"
+nyxcore_netbios: "NYXCORE"
+nyxcore_domain_dn: "DC=nyxcore,DC=lab"
+nyxcore_dc_name: "NYX-DC01"
+nyxcore_dc_ip: "192.168.56.10"
+
+veloran_domain: "veloran.corp"
+veloran_netbios: "VELORAN"
+veloran_domain_dn: "DC=veloran,DC=corp"
+veloran_dc_name: "VEL-DC01"
+veloran_dc_ip: "192.168.56.20"
+
+lab_subnet: "192.168.56.0/24"
+
+# Administradores de dominio (se crean al promover cada bosque) — LAB ONLY
+nyxcore_domain_admin: "NYXCORE\\Administrator"
+nyxcore_domain_admin_password: "{{ lab_admin_password }}"
+veloran_domain_admin: "VELORAN\\Administrator"
+veloran_domain_admin_password: "{{ lab_admin_password }}"
+
+# DSRM / Safe Mode Administrator Password — LAB ONLY
+nyxcore_safe_mode_password: "Dsrm#Nyx-2026!"
+veloran_safe_mode_password: "Dsrm#Vel-2026!"
+
+# Nivel funcional: WinThreshold = 2016 (válido para Server 2019/2022)
+ad_forest_mode: "WinThreshold"
+ad_domain_mode: "WinThreshold"
+
+# -----------------------------------------------------------------------------
+# Contraseña reutilizada / documentada (el "olor" realista) — LAB ONLY
+# -----------------------------------------------------------------------------
+# Aparece en el Description de svc_backup_legacy y se repite en
+# DeptConfigs\HR\onboarding.txt y IT-Ops\backup-agent.config (password spraying).
+# Es intencional. La reutilización ENTRE BOSQUES es helio_reused_password (abajo).
+reused_password: "Backup2019!"
+
+# Password del admin heredado NYXCORE\adm.old.helio. Se REUTILIZA en su
+# "cuenta espejo" del bosque veloran.corp (mismo hash NT => pivot por trust).
+helio_reused_password: "Helio.Adm#2017"
+
+# -----------------------------------------------------------------------------
+# Rutas base en las VMs
+# -----------------------------------------------------------------------------
+lab_root_dir: 'C:\Lab'
+lab_flags_dir: 'C:\Lab\flags'
+lab_logs_dir: 'C:\Lab\logs'
+lab_tools_dir: 'C:\Lab\tools'
+
+# -----------------------------------------------------------------------------
+# Sysmon
+# -----------------------------------------------------------------------------
+# Opción A (por defecto): descarga desde Microsoft Sysinternals (requiere que
+#   la VM tenga salida a Internet, p.ej. una NIC NAT temporal).
+# Opción B: deja Sysmon64.exe en ansible/roles/win_sysmon/files/ (lo ignora
+#   .gitignore) y pon sysmon_local_binary: true. Se copia por WinRM.
+sysmon_download_url: "https://download.sysinternals.com/files/Sysmon.zip"
+sysmon_local_binary: false
+sysmon_install_dir: 'C:\Lab\tools\Sysmon'
+
+# -----------------------------------------------------------------------------
+# Share de ejemplo en NYX-FS01
+# -----------------------------------------------------------------------------
+share_server: "NYX-FS01"
+share_name: "DeptConfigs"
+share_path: 'C:\Shares\DeptConfigs'
+
+# -----------------------------------------------------------------------------
+# ADCS
+# -----------------------------------------------------------------------------
+adcs_ca_common_name: "NYXCORE-ROOT-CA"
+adcs_enable_web_enrollment: true          # endpoint HTTP /certsrv (pista ESC8)
+adcs_legacy_template: "NyxLegacyUserAuth" # plantilla "heredada" mal configurada
+adcs_template_enroll_group: "PKI-Operators"
+
+# -----------------------------------------------------------------------------
+# Flags (elementos de seguimiento). Ver examples/sample-flags.txt
+# readers: principal que puede LEER el archivo (además de SYSTEM/Administrators)
+# -----------------------------------------------------------------------------
+lab_flags:
+  - id: "FLAG-01"
+    host: "NYX-JUMP"
+    path: 'C:\Lab\flags\flag01-foothold.txt'
+    value: "NYX{f00th0ld_0n_th3_jump_b0x_3c71}"
+    readers: "NYXCORE\\Jump-RDP-Users"
+  - id: "FLAG-02"
+    host: "NYX-FS01"
+    path: 'C:\Shares\DeptConfigs\IT-Ops\flag02.txt'
+    value: "NYX{c0nf1g_f1l3s_n3v3r_f0rg3t_8a2e}"
+    readers: "NYXCORE\\IT-Ops-Readers"
+  - id: "FLAG-03"
+    host: "NYX-FS01"
+    path: 'C:\Lab\flags\flag03-fs-admin.txt'
+    value: "NYX{l0c4l_4dm1n_0n_f1l3s_51d0}"
+    readers: ""
+  - id: "FLAG-04"
+    host: "NYX-CA01"
+    path: 'C:\Lab\flags\flag04-pki.txt'
+    value: "NYX{c3rt1f1c4t3s_4r3_cr3d3nt14ls_d94b}"
+    readers: ""
+  - id: "FLAG-05"
+    host: "NYX-DC01"
+    path: 'C:\Lab\flags\flag05-domain.txt'
+    value: "NYX{nyxc0r3_d0m41n_0wn3d_2f6a}"
+    readers: ""
+  - id: "FLAG-06"
+    host: "VEL-DC01"
+    path: 'C:\Lab\flags\flag06-veloran.txt'
+    value: "VEL{tru5t_1s_n0t_4_b0und4ry_7e13}"
+    readers: ""
+
+# FLAG-07 no es un archivo: vive en el atributo "info" de
+# VELORAN\svc_sync_veloran (ver group_vars/veloran.yml). Se lee enumerando
+# LDAP a través del trust.
+flag07_value: "VEL{3num3r4t3_4cr0ss_th3_tru5t_a5c0}"
