@@ -1,0 +1,4 @@
+---
+host_role: "Jump server - punto de entrada limitado"
+# Usuario de entrada que se entrega al alumno (ver docs/ATTACK-PATHS.md)
+jump_entry_user: "NYXCORE\\j.cortez"
