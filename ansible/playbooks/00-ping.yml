@@ -1,0 +1,17 @@
+---
+# Fase 00 — Conectividad WinRM básica a todas las máquinas.
+- name: "00 | Verificar conectividad WinRM"
+  hosts: windows
+  gather_facts: false
+  tasks:
+    - name: Ping WinRM
+      ansible.windows.win_ping:
+
+    - name: Mostrar hostname remoto
+      ansible.windows.win_shell: hostname
+      register: remote_name
+      changed_when: false
+
+    - name: Resumen
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} responde como {{ remote_name.stdout | trim }}"

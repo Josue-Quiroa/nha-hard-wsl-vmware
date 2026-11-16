@@ -1,0 +1,14 @@
+---
+# Fase 01 — Baseline de todas las VMs Windows:
+#   * Confirmar que Windows Defender sigue ACTIVO (nunca se desactiva).
+#   * Instalar Sysmon con config tipo SwiftOnSecurity.
+#   * Habilitar Advanced Audit Policy local.
+#   * Crear carpetas base C:\Lab.
+- name: "01 | Baseline Windows (Defender ON, Sysmon, auditoría, carpetas)"
+  hosts: windows
+  gather_facts: true
+  roles:
+    - role: win_baseline
+    - role: win_defender_check
+    - role: win_sysmon
+    - role: win_audit_policy

@@ -1,0 +1,7 @@
+---
+# Fase 02 — Promover NYX-DC01 como primer DC del bosque nyxcore.lab.
+- name: "02 | Crear bosque nyxcore.lab"
+  hosts: nyxcore_dcs
+  gather_facts: true
+  roles:
+    - role: ad_domain_nyxcore
