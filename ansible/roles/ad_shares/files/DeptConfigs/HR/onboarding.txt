@@ -1,0 +1,3 @@
+Onboarding (LAB, ficticio):
+- Nuevas altas: crear usuario en OU=Staff.
+- Password temporal estandar del año pasado: Backup2019!  (cambiar al primer login)

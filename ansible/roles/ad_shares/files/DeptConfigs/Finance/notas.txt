@@ -1,0 +1,3 @@
+Notas finanzas (LAB):
+- El acceso a \\NYX-FS01\DeptConfigs\Finance deberia limitarse a Finance-Users.
+- Revisar permisos: ahora mismo "Authenticated Users" tiene lectura. Pendiente.

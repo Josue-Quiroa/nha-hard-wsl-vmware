@@ -1,0 +1,12 @@
+# ==========================================================================
+#  db-conn.txt  -  "Temporal", copiado de la app de finanzas en 2023
+#  (LAB: cadenas de conexión FICTICIAS - no existe ningún SQL real)
+# ==========================================================================
+#
+# ERP finanzas (la app aun no soporta Integrated Security, ver CHG-1187)
+Server=nyx-fs01.nyxcore.lab,1433;Database=FinanceERP;User Id=NYXCORE\m.quiroga;Password=Quiroga.Fin2023;Encrypt=false
+#
+# Reporting (SSRS) - la cuenta de servicio tiene SPN y delegacion "para que funcione el doble salto"
+Server=nyx-fs01.nyxcore.lab,1433;Database=ReportServer;Integrated Security=SSPI;Application Name=SSRS;Service Account=NYXCORE\svc_sqlreport
+#
+# PKI: el portal de certificados sigue en HTTP ->  http://nyx-ca01.nyxcore.lab/certsrv/
