@@ -1,0 +1,199 @@
+---
+# ad_acls_flags — Fase final:
+#   1. ACLs intencionales en AD (DC de cada dominio)
+#   2. Membresías cross-forest (FSP) en veloran.corp
+#   3. Grupos locales en servidores miembro (quién es admin/RDP dónde)
+#   4. Jump "limitado" (NYX-JUMP)
+#   5. Flags en disco con ACL restrictiva
+
+# ---------------------------------------------------------------------------
+# 1. ACLs intencionales en AD
+# ---------------------------------------------------------------------------
+- name: "Aplicar ACLs intencionales en AD"
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    Import-Module ActiveDirectory
+    $principal = Get-ADObject -Filter "sAMAccountName -eq '{{ item.principal }}'" -Properties objectSid
+    if (-not $principal) { throw "Principal {{ item.principal }} no existe" }
+    $sid = [System.Security.Principal.SecurityIdentifier]$principal.objectSid
+    {% if item.target_sam is defined %}
+    $targetDN = (Get-ADObject -Filter "sAMAccountName -eq '{{ item.target_sam }}'").DistinguishedName
+    {% else %}
+    $targetDN = '{{ item.target_ou }}'
+    {% endif %}
+    $acl = Get-Acl "AD:$targetDN"
+    $right = '{{ item.right }}'
+    $resetGuid = [Guid]'00299570-246d-11d0-a768-00aa006e0529'   # User-Force-Change-Password
+    $userClass = [Guid]'bf967aba-0de6-11d0-a285-00aa003049e2'   # objeto user
+
+    $existing = $acl.Access | Where-Object {
+      try { $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]) -eq $sid } catch { $false }
+    }
+    switch ($right) {
+      'ForceChangePassword' {
+        if ($existing | Where-Object { $_.ObjectType -eq $resetGuid }) { 'UNCHANGED'; exit 0 }
+        {% if item.target_ou is defined %}
+        $ace = New-Object System.DirectoryServices.ActiveDirectoryAccessRule(
+          $sid, 'ExtendedRight', 'Allow', $resetGuid, 'Descendents', $userClass)
+        {% else %}
+        $ace = New-Object System.DirectoryServices.ActiveDirectoryAccessRule(
+          $sid, 'ExtendedRight', 'Allow', $resetGuid)
+        {% endif %}
+      }
+      default {
+        if ($existing | Where-Object { $_.ActiveDirectoryRights.ToString() -match $right }) { 'UNCHANGED'; exit 0 }
+        $ace = New-Object System.DirectoryServices.ActiveDirectoryAccessRule(
+          $sid, [System.DirectoryServices.ActiveDirectoryRights]$right, 'Allow')
+      }
+    }
+    $acl.AddAccessRule($ace)
+    Set-Acl -Path "AD:$targetDN" -AclObject $acl
+    'CHANGED'
+  loop: "{{ ad_acl_misconfigs }}"
+  loop_control:
+    label: "{{ item.principal }} -[{{ item.right }}]-> {{ item.target_sam | default(item.target_ou) }}"
+  register: acl_result
+  changed_when: "'CHANGED' in acl_result.stdout"
+  when: inventory_hostname in groups['domain_controllers']
+
+# ---------------------------------------------------------------------------
+# 2. Membresías cross-forest (Foreign Security Principals) en veloran.corp
+# ---------------------------------------------------------------------------
+- name: "Añadir grupos de nyxcore.lab a grupos locales de dominio de veloran.corp"
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    Import-Module ActiveDirectory
+    $cred = New-Object System.Management.Automation.PSCredential(
+      '{{ nyxcore_domain_admin }}',
+      (ConvertTo-SecureString '{{ nyxcore_domain_admin_password }}' -AsPlainText -Force))
+    $foreign = Get-ADGroup '{{ item.foreign_group }}' -Server '{{ item.foreign_domain }}' -Credential $cred
+    # Get-ADGroupMember falla a veces con FSPs: miramos el atributo member directamente
+    $members = (Get-ADGroup '{{ item.group }}' -Properties member).member
+    if ($members -match [regex]::Escape($foreign.SID.Value)) { 'UNCHANGED'; exit 0 }
+    Add-ADGroupMember -Identity '{{ item.group }}' -Members $foreign
+    'CHANGED'
+  loop: "{{ cross_forest_memberships }}"
+  loop_control:
+    label: "{{ item.foreign_domain }}\\{{ item.foreign_group }} -> {{ item.group }}"
+  register: fsp
+  changed_when: "'CHANGED' in fsp.stdout"
+  when: inventory_hostname in groups['veloran_dcs']
+  become: true
+  become_method: ansible.builtin.runas
+  become_user: "{{ veloran_domain_admin }}"
+  vars:
+    ansible_become_password: "{{ veloran_domain_admin_password }}"
+  no_log: true
+
+# ---------------------------------------------------------------------------
+# 3. Grupos locales en servidores miembro
+# ---------------------------------------------------------------------------
+- name: "Membresías de grupos locales ({{ inventory_hostname }})"
+  ansible.windows.win_group_membership:
+    name: "{{ item.group }}"
+    members: "{{ item.members }}"
+    state: present
+  loop: "{{ local_group_memberships[inventory_hostname] | default([]) }}"
+  loop_control:
+    label: "{{ item.group }} += {{ item.members | join(', ') }}"
+  when: inventory_hostname in groups['nyxcore_members']
+
+# ---------------------------------------------------------------------------
+# 4. Jump "limitado" (NYX-JUMP)
+# ---------------------------------------------------------------------------
+- name: "Jump | Habilitar RDP (solo Remote Desktop Users => Jump-RDP-Users)"
+  ansible.windows.win_regedit:
+    path: HKLM:\System\CurrentControlSet\Control\Terminal Server
+    name: fDenyTSConnections
+    data: 0
+    type: dword
+  when:
+    - inventory_hostname in groups['jump_hosts']
+    - jump_enable_rdp | bool
+
+- name: "Jump | Exigir NLA para RDP"
+  ansible.windows.win_regedit:
+    path: HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp
+    name: UserAuthentication
+    data: 1
+    type: dword
+  when:
+    - inventory_hostname in groups['jump_hosts']
+    - jump_enable_rdp | bool
+
+- name: "Jump | Abrir firewall para RDP"
+  ansible.windows.win_shell: Enable-NetFirewallRule -DisplayGroup 'Remote Desktop'
+  changed_when: false
+  when:
+    - inventory_hostname in groups['jump_hosts']
+    - jump_enable_rdp | bool
+
+- name: "Jump | Crear carpeta de transcripciones PowerShell"
+  ansible.windows.win_file:
+    path: 'C:\Lab\logs\transcripts'
+    state: directory
+  when:
+    - inventory_hostname in groups['jump_hosts']
+    - jump_powershell_logging | bool
+
+- name: "Jump | PowerShell Script Block Logging"
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging
+    name: EnableScriptBlockLogging
+    data: 1
+    type: dword
+  when:
+    - inventory_hostname in groups['jump_hosts']
+    - jump_powershell_logging | bool
+
+- name: "Jump | PowerShell Transcription a C:\\Lab\\logs\\transcripts"
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription
+    name: "{{ item.name }}"
+    data: "{{ item.data }}"
+    type: "{{ item.type }}"
+  loop:
+    - { name: EnableTranscripting,    data: 1, type: dword }
+    - { name: EnableInvocationHeader, data: 1, type: dword }
+    - { name: OutputDirectory,        data: 'C:\Lab\logs\transcripts', type: string }
+  when:
+    - inventory_hostname in groups['jump_hosts']
+    - jump_powershell_logging | bool
+
+- name: "Jump | Banner legal de inicio de sesión"
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+    name: "{{ item.name }}"
+    data: "{{ item.data }}"
+    type: string
+  loop:
+    - { name: legalnoticecaption, data: "NYXCORE - Servidor de salto" }
+    - { name: legalnoticetext,    data: "Uso exclusivo de personal autorizado. Actividad monitorizada (LAB)." }
+  when:
+    - inventory_hostname in groups['jump_hosts']
+    - jump_logon_banner | bool
+
+# ---------------------------------------------------------------------------
+# 5. Flags en disco
+# ---------------------------------------------------------------------------
+- name: "Plantar flags de {{ inventory_hostname }}"
+  ansible.windows.win_copy:
+    dest: "{{ item.path }}"
+    content: "{{ item.value }}\r\n"
+  loop: "{{ lab_flags | selectattr('host', 'equalto', inventory_hostname) | list }}"
+  loop_control:
+    label: "{{ item.id }} -> {{ item.path }}"
+  no_log: true
+
+- name: "ACL restrictiva en cada flag (SYSTEM + Administrators + lector designado)"
+  ansible.windows.win_shell: |
+    $f = '{{ item.path }}'
+    icacls $f /inheritance:r /grant:r "*S-1-5-18:F" "*S-1-5-32-544:F" | Out-Null
+    {% if item.readers | length > 0 %}
+    icacls $f /grant "{{ item.readers }}:R" | Out-Null
+    {% endif %}
+    'OK'
+  loop: "{{ lab_flags | selectattr('host', 'equalto', inventory_hostname) | list }}"
+  loop_control:
+    label: "{{ item.id }} (lector: {{ item.readers | default('admins') }})"
+  changed_when: false

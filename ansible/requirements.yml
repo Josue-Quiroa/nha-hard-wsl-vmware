@@ -1,0 +1,10 @@
+---
+# Colecciones necesarias. Instala con:
+#   ansible-galaxy collection install -r ansible/requirements.yml
+collections:
+  - name: ansible.windows
+    version: ">=2.0.0"
+  - name: community.windows
+    version: ">=2.0.0"
+  - name: microsoft.ad
+    version: ">=1.5.0"

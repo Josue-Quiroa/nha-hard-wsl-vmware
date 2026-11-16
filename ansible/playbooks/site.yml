@@ -1,0 +1,20 @@
+---
+# =============================================================================
+# site.yml — Orquesta TODO el laboratorio en orden seguro.
+# Equivalente a: bash scripts/deploy.sh   (sin fases sueltas)
+#
+# Uso:  ansible-playbook -i inventory.ini site.yml
+#
+# El orden importa: cada import depende de que el anterior haya terminado.
+# =============================================================================
+- import_playbook: 00-ping.yml
+- import_playbook: 01-baseline.yml
+- import_playbook: 02-domain-nyxcore.yml
+- import_playbook: 03-domain-veloran.yml
+- import_playbook: 04-trust.yml
+- import_playbook: 05-domain-join.yml
+- import_playbook: 06-adcs.yml
+- import_playbook: 07-ad-objects.yml
+- import_playbook: 08-gpo-audit-kerberos.yml
+- import_playbook: 09-shares.yml
+- import_playbook: 10-acls-flags.yml

@@ -1,0 +1,9 @@
+---
+lab_flags: []
+ad_acl_misconfigs: []
+cross_forest_memberships: []
+local_group_memberships: {}
+# Jump limitado: RDP solo para Jump-RDP-Users + logging de PowerShell
+jump_enable_rdp: true
+jump_powershell_logging: true
+jump_logon_banner: true
