@@ -3,7 +3,7 @@
 # site.yml — Orquesta TODO el laboratorio en orden seguro.
 # Equivalente a: bash scripts/deploy.sh   (sin fases sueltas)
 #
-# Uso:  ansible-playbook -i inventory.ini site.yml
+# Uso (desde ansible/):  ansible-playbook -i inventory.ini playbooks/site.yml
 #
 # El orden importa: cada import depende de que el anterior haya terminado.
 # =============================================================================

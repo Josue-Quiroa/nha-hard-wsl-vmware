@@ -1,5 +1,8 @@
 # REVIEW-NOTES — nha-hard-wsl-vmware
 
+> **Actualización 2026-11-16 (America/Guatemala):** segunda revisión completa, ya con la fase 11 (`11-decoys.yml`, fases 00–11). La checklist de 2026-11-15 de abajo es histórica: donde dice «00–10» léase «00–11». En esta pasada se corrigieron un `cpassword` GPP inválido, el `command_timeout` de Ansible, reinicios tras instalar roles de Windows, la comprobación DNS del trust y comentarios/docs desalineados.
+
+
 Revisión pre-push (2026-11-15, America/Guatemala). No se hizo `git init` ni push (lo maneja el agente padre).
 
 ## Checklist de confirmación

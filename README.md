@@ -107,8 +107,8 @@ Para **cada** máquina de la tabla:
 En la consola de cada VM, como Administrator local:
 
 1. Pon el **hostname** correcto (`Rename-Computer -NewName NYX-DC01 -Restart`).
-2. Configura IP estática, máscara, gateway y DNS:
-   - DCs: DNS a sí mismos + el otro DC después.
+2. Configura IP estática, máscara y DNS (hay comandos listos en `examples/static-ip-snippets.ps1`). El gateway solo hace falta si tu VMnet lo tiene; en host-only puro puedes omitirlo.
+   - DCs: DNS a `127.0.0.1`. Ansible añadirá más adelante el forwarder condicional al otro bosque.
    - Resto: DNS primario `192.168.56.10`.
 3. Copia `scripts/Configure-WinRM.ps1` a la VM (USB virtual, share, o pegar contenido).
 4. Ejecuta en PowerShell **como Administrator**:
