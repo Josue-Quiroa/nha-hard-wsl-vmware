@@ -84,6 +84,7 @@
       - { name: "Computer Account Management",        guid: "{0cce9236-69ae-11d9-bed3-505054503030}", label: "Success and Failure", value: 3 }
       - { name: "Security Group Management",          guid: "{0cce9237-69ae-11d9-bed3-505054503030}", label: "Success and Failure", value: 3 }
       - { name: "File Share",                         guid: "{0cce9224-69ae-11d9-bed3-505054503030}", label: "Success and Failure", value: 3 }
+      - { name: "File System",                        guid: "{0cce921d-69ae-11d9-bed3-505054503030}", label: "Success", value: 1 }
       - { name: "Detailed File Share",                guid: "{0cce9244-69ae-11d9-bed3-505054503030}", label: "Failure", value: 2 }
       - { name: "Sensitive Privilege Use",            guid: "{0cce9228-69ae-11d9-bed3-505054503030}", label: "Success and Failure", value: 3 }
       - { name: "Audit Policy Change",                guid: "{0cce922f-69ae-11d9-bed3-505054503030}", label: "Success and Failure", value: 3 }

@@ -1,0 +1,47 @@
+---
+# Fase 11 — Señuelos (honeypots) y caminos falsos. SPOILER: autor del lab.
+# Va al final para no interferir con la cadena real (FLAG-01..07): solo AÑADE
+# objetos nuevos; no modifica usuarios, ACLs, shares ni plantillas existentes.
+# Desactívala con decoys_enabled: false (group_vars/all.yml).
+
+- name: "11a | Señuelos de AD en nyxcore.lab"
+  hosts: nyxcore_dcs
+  gather_facts: false
+  tasks:
+    - name: "Cuentas, grupos y ACLs señuelo"
+      ansible.builtin.import_role:
+        name: ad_decoys
+        tasks_from: ad.yml
+      when: decoys_enabled | bool
+
+- name: "11b | Señuelos de AD en veloran.corp"
+  hosts: veloran_dcs
+  gather_facts: false
+  tasks:
+    - name: "Cuentas y grupos señuelo"
+      ansible.builtin.import_role:
+        name: ad_decoys
+        tasks_from: ad.yml
+      when: decoys_enabled | bool
+
+- name: "11c | Share y archivos señuelo en NYX-FS01"
+  hosts: file_servers
+  gather_facts: false
+  tasks:
+    - name: "DeptConfigs\\Archive + IT-Archive$"
+      ansible.builtin.import_role:
+        name: ad_decoys
+        tasks_from: share.yml
+      when: decoys_enabled | bool
+
+- name: "11d | Plantilla ADCS señuelo en NYX-CA01"
+  hosts: ca_servers
+  gather_facts: false
+  tasks:
+    - name: "Plantilla con Enroll a grupo vacío"
+      ansible.builtin.import_role:
+        name: ad_decoys
+        tasks_from: adcs.yml
+      when:
+        - decoys_enabled | bool
+        - decoy_adcs_enabled | bool

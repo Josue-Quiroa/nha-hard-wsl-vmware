@@ -61,3 +61,30 @@ cross_forest_memberships:
   - group: "Vel-Partner-Readers"
     foreign_domain: "{{ nyxcore_domain }}"
     foreign_group: "Finance-Users"
+
+# =============================================================================
+# SEÑUELOS (honeypots) — rol ad_decoys, fase 11. SPOILER (autor del lab).
+# Sin privilegios reales; las marcas "DECOY" solo existen en estos comentarios.
+# =============================================================================
+decoy_groups:
+  # [DECOY] Nombre "Tier 0" muy jugoso. No está en ningún grupo privilegiado
+  # ni tiene ACEs en ningún sitio.
+  - { name: "Tier0-Ops-Legacy", scope: "global", description: "Operaciones Tier 0 (legacy) - acceso a DCs pendiente de migrar a PAM" }
+
+decoy_users:
+  # [DECOY] Cuenta de despliegue con SPN (host inexistente), adminCount=1 y
+  # miembro de Tier0-Ops-Legacy. Password aleatoria. La credencial que aparece
+  # en IT-Archive$\scripts\nightly-export.ps1 es INCORRECTA (=> 4771/4625 en
+  # VEL-DC01, también si se prueba desde nyxcore.lab a través del trust).
+  - sam: "vel.svc_deploy"
+    given: "svc"
+    surname: "deploy"
+    password: "{{ decoy_random_password }}"
+    path: "OU=ServiceAccounts,OU=VelCorp,{{ veloran_domain_dn }}"
+    description: "Pipeline de despliegue (Octopus) - acceso T0. Credencial en boveda VEL-KV"
+    password_never_expires: true
+    admin_count: 1
+    groups: ["Tier0-Ops-Legacy"]
+    spn: ["HTTP/vel-deploy.veloran.corp"]
+
+decoy_acls: []

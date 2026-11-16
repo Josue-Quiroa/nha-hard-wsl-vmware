@@ -15,6 +15,8 @@ audit_subcategories:
   - { name: "Directory Service Access",   value: "Success and Failure" }
   - { name: "Directory Service Changes",  value: "Success and Failure" }
   - { name: "File Share",                 value: "Success and Failure" }
+  # File System: solo genera 4663 en objetos con SACL (honeyfiles de la fase 11)
+  - { name: "File System",                value: "Success" }
   - { name: "Detailed File Share",        value: "Failure" }
   - { name: "Sensitive Privilege Use",    value: "Success and Failure" }
   - { name: "Audit Policy Change",        value: "Success and Failure" }
