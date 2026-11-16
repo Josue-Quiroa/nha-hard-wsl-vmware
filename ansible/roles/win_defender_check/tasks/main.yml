@@ -1,0 +1,41 @@
+---
+# win_defender_check — Garantiza que Windows Defender permanece ACTIVO.
+# Por diseño del lab, Defender NO se desactiva en ninguna máquina.
+
+- name: "Asegurar servicio WinDefend iniciado y en auto"
+  ansible.windows.win_service:
+    name: WinDefend
+    state: started
+    start_mode: auto
+  register: defender_svc
+  failed_when: false
+
+- name: "Consultar estado de Defender (Get-MpComputerStatus)"
+  ansible.windows.win_shell: |
+    $s = Get-MpComputerStatus
+    [pscustomobject]@{
+      RealTime = $s.RealTimeProtectionEnabled
+      AMService = $s.AMServiceEnabled
+      Antispyware = $s.AntispywareEnabled
+    } | ConvertTo-Json -Compress
+  register: mp_status
+  changed_when: false
+  failed_when: false
+
+- name: "Re-habilitar protección en tiempo real si estuviera apagada"
+  ansible.windows.win_shell: |
+    Set-MpPreference -DisableRealtimeMonitoring $false
+  changed_when: false
+  failed_when: false
+
+- name: "Mostrar estado de Defender"
+  ansible.builtin.debug:
+    msg: "Defender en {{ inventory_hostname }}: {{ mp_status.stdout | default('n/d') | trim }}"
+
+- name: "(Opcional) Fallar si Defender está desactivado"
+  ansible.builtin.fail:
+    msg: "Windows Defender NO está activo en {{ inventory_hostname }} y el lab lo requiere."
+  when:
+    - defender_fail_if_disabled | bool
+    - mp_status.stdout is defined
+    - '"\"RealTime\":true" not in (mp_status.stdout | default(""))'

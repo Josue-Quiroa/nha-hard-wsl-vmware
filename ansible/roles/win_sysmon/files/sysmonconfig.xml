@@ -1,0 +1,184 @@
+<!--
+  sysmonconfig.xml  -  nha-hard-wsl-vmware (LAB)
+  ==========================================================================
+  Configuración REDUCIDA inspirada en SwiftOnSecurity/sysmon-config y
+  olafhartong/sysmon-modular. Pensada para un lab AD: registra lo útil para
+  revisar Kerberos/LDAP/ADCS/SMB sin generar demasiado ruido.
+
+  >>> Para un entorno más completo REEMPLAZA este archivo por:
+      https://github.com/SwiftOnSecurity/sysmon-config/blob/master/sysmonconfig-export.xml
+      https://github.com/olafhartong/sysmon-modular/blob/master/sysmonconfig.xml
+  y vuelve a ejecutar la fase 01 (el handler recarga la config con -c).
+  ==========================================================================
+-->
+<Sysmon schemaversion="4.50">
+  <HashAlgorithms>md5,sha256,IMPHASH</HashAlgorithms>
+  <CheckRevocation/>
+  <EventFiltering>
+
+    <!-- EID 1: Creación de procesos. Se registra todo salvo ruido conocido. -->
+    <RuleGroup name="" groupRelation="or">
+      <ProcessCreate onmatch="exclude">
+        <Image condition="is">C:\Windows\System32\conhost.exe</Image>
+        <Image condition="is">C:\Windows\System32\wbem\WmiApSrv.exe</Image>
+        <Image condition="is">C:\Windows\System32\backgroundTaskHost.exe</Image>
+        <CommandLine condition="begin with">C:\Windows\system32\wermgr.exe -upload</CommandLine>
+        <ParentImage condition="is">C:\Windows\System32\SearchIndexer.exe</ParentImage>
+        <Image condition="begin with">C:\ProgramData\Microsoft\Windows Defender\Platform\</Image>
+      </ProcessCreate>
+    </RuleGroup>
+
+    <!-- EID 2: Cambio de timestamp de archivos (timestomping) -->
+    <RuleGroup name="" groupRelation="or">
+      <FileCreateTime onmatch="include">
+        <Image condition="begin with">C:\Users</Image>
+        <Image condition="begin with">C:\ProgramData</Image>
+        <Image condition="begin with">C:\Windows\Temp</Image>
+      </FileCreateTime>
+    </RuleGroup>
+
+    <!-- EID 3: Conexiones de red de binarios interesantes / puertos AD -->
+    <RuleGroup name="" groupRelation="or">
+      <NetworkConnect onmatch="include">
+        <Image condition="end with">powershell.exe</Image>
+        <Image condition="end with">pwsh.exe</Image>
+        <Image condition="end with">cmd.exe</Image>
+        <Image condition="end with">rundll32.exe</Image>
+        <Image condition="end with">regsvr32.exe</Image>
+        <Image condition="end with">mshta.exe</Image>
+        <Image condition="end with">certutil.exe</Image>
+        <Image condition="end with">wmic.exe</Image>
+        <Image condition="begin with">C:\Users</Image>
+        <Image condition="begin with">C:\ProgramData</Image>
+        <Image condition="begin with">C:\Windows\Temp</Image>
+        <DestinationPort condition="is">88</DestinationPort>    <!-- Kerberos -->
+        <DestinationPort condition="is">389</DestinationPort>   <!-- LDAP -->
+        <DestinationPort condition="is">636</DestinationPort>   <!-- LDAPS -->
+        <DestinationPort condition="is">3268</DestinationPort>  <!-- GC -->
+        <DestinationPort condition="is">445</DestinationPort>   <!-- SMB -->
+        <DestinationPort condition="is">5985</DestinationPort>  <!-- WinRM -->
+        <DestinationPort condition="is">3389</DestinationPort>  <!-- RDP -->
+      </NetworkConnect>
+      <NetworkConnect onmatch="exclude">
+        <Image condition="is">C:\Windows\System32\svchost.exe</Image>
+        <Image condition="is">C:\Windows\System32\lsass.exe</Image>
+        <Image condition="is">C:\Windows\System32\dns.exe</Image>
+      </NetworkConnect>
+    </RuleGroup>
+
+    <!-- EID 5: Fin de proceso (no se registra para reducir ruido) -->
+    <RuleGroup name="" groupRelation="or">
+      <ProcessTerminate onmatch="include"/>
+    </RuleGroup>
+
+    <!-- EID 6: Carga de drivers (todo excepto firmados por Microsoft) -->
+    <RuleGroup name="" groupRelation="or">
+      <DriverLoad onmatch="exclude">
+        <Signature condition="contains">Microsoft</Signature>
+        <Signature condition="contains">VMware</Signature>
+      </DriverLoad>
+    </RuleGroup>
+
+    <!-- EID 7: Carga de imágenes (desactivado: muy ruidoso) -->
+    <RuleGroup name="" groupRelation="or">
+      <ImageLoad onmatch="include"/>
+    </RuleGroup>
+
+    <!-- EID 8: CreateRemoteThread (inyección) -->
+    <RuleGroup name="" groupRelation="or">
+      <CreateRemoteThread onmatch="exclude">
+        <SourceImage condition="is">C:\Windows\System32\wbem\WmiPrvSE.exe</SourceImage>
+        <SourceImage condition="is">C:\Windows\System32\svchost.exe</SourceImage>
+        <SourceImage condition="is">C:\Windows\System32\csrss.exe</SourceImage>
+      </CreateRemoteThread>
+    </RuleGroup>
+
+    <!-- EID 10: Acceso a procesos: foco en LSASS (volcado de credenciales) -->
+    <RuleGroup name="" groupRelation="or">
+      <ProcessAccess onmatch="include">
+        <TargetImage condition="is">C:\Windows\system32\lsass.exe</TargetImage>
+      </ProcessAccess>
+      <ProcessAccess onmatch="exclude">
+        <SourceImage condition="is">C:\Windows\system32\wbem\wmiprvse.exe</SourceImage>
+        <SourceImage condition="is">C:\Windows\System32\svchost.exe</SourceImage>
+        <SourceImage condition="begin with">C:\ProgramData\Microsoft\Windows Defender\Platform\</SourceImage>
+        <SourceImage condition="is">C:\Windows\system32\MRT.exe</SourceImage>
+      </ProcessAccess>
+    </RuleGroup>
+
+    <!-- EID 11: Creación de archivos en ubicaciones sospechosas -->
+    <RuleGroup name="" groupRelation="or">
+      <FileCreate onmatch="include">
+        <TargetFilename condition="contains">\Start Menu\Programs\Startup\</TargetFilename>
+        <TargetFilename condition="begin with">C:\Windows\Temp\</TargetFilename>
+        <TargetFilename condition="begin with">C:\Users\Public\</TargetFilename>
+        <TargetFilename condition="end with">.ps1</TargetFilename>
+        <TargetFilename condition="end with">.bat</TargetFilename>
+        <TargetFilename condition="end with">.dll</TargetFilename>
+        <TargetFilename condition="end with">.exe</TargetFilename>
+        <TargetFilename condition="end with">.kirbi</TargetFilename>
+        <TargetFilename condition="end with">.ccache</TargetFilename>
+        <TargetFilename condition="end with">.pfx</TargetFilename>
+        <TargetFilename condition="end with">.dmp</TargetFilename>
+        <TargetFilename condition="contains">\ntds.dit</TargetFilename>
+      </FileCreate>
+    </RuleGroup>
+
+    <!-- EID 12/13/14: Registro: persistencia y configuración de seguridad -->
+    <RuleGroup name="" groupRelation="or">
+      <RegistryEvent onmatch="include">
+        <TargetObject condition="contains">\CurrentVersion\Run</TargetObject>
+        <TargetObject condition="contains">\CurrentVersion\RunOnce</TargetObject>
+        <TargetObject condition="contains">\Services\</TargetObject>
+        <TargetObject condition="contains">\Control\Lsa\</TargetObject>
+        <TargetObject condition="contains">\Windows Defender\</TargetObject>
+        <TargetObject condition="contains">\Image File Execution Options\</TargetObject>
+        <TargetObject condition="contains">\Winlogon\</TargetObject>
+        <TargetObject condition="contains">\CertSvc\</TargetObject>
+      </RegistryEvent>
+    </RuleGroup>
+
+    <!-- EID 15: Alternate Data Streams descargados -->
+    <RuleGroup name="" groupRelation="or">
+      <FileCreateStreamHash onmatch="include">
+        <TargetFilename condition="contains">Downloads</TargetFilename>
+        <TargetFilename condition="end with">:Zone.Identifier</TargetFilename>
+      </FileCreateStreamHash>
+    </RuleGroup>
+
+    <!-- EID 17/18: Named pipes (herramientas de movimiento lateral) -->
+    <RuleGroup name="" groupRelation="or">
+      <PipeEvent onmatch="include">
+        <PipeName condition="contains">\PSEXESVC</PipeName>
+        <PipeName condition="contains">\RemCom</PipeName>
+        <PipeName condition="contains">\paexec</PipeName>
+        <PipeName condition="contains">\msagent_</PipeName>
+        <PipeName condition="contains">\postex_</PipeName>
+        <PipeName condition="contains">\status_</PipeName>
+      </PipeEvent>
+    </RuleGroup>
+
+    <!-- EID 19/20/21: Persistencia WMI (todo) -->
+    <RuleGroup name="" groupRelation="or">
+      <WmiEvent onmatch="exclude"/>
+    </RuleGroup>
+
+    <!-- EID 22: Consultas DNS (excluye ruido de Microsoft/updates) -->
+    <RuleGroup name="" groupRelation="or">
+      <DnsQuery onmatch="exclude">
+        <QueryName condition="end with">.microsoft.com</QueryName>
+        <QueryName condition="end with">.windowsupdate.com</QueryName>
+        <QueryName condition="end with">.windows.com</QueryName>
+        <QueryName condition="end with">.msftncsi.com</QueryName>
+        <QueryName condition="end with">.nyxcore.lab</QueryName>
+        <QueryName condition="end with">.veloran.corp</QueryName>
+      </DnsQuery>
+    </RuleGroup>
+
+    <!-- EID 25: Process tampering -->
+    <RuleGroup name="" groupRelation="or">
+      <ProcessTampering onmatch="exclude"/>
+    </RuleGroup>
+
+  </EventFiltering>
+</Sysmon>

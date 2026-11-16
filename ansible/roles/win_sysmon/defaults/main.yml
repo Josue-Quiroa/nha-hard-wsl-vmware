@@ -1,0 +1,7 @@
+---
+sysmon_download_url: "https://download.sysinternals.com/files/Sysmon.zip"
+# true => copia roles/win_sysmon/files/Sysmon64.exe (no se descarga nada)
+sysmon_local_binary: false
+sysmon_install_dir: 'C:\Lab\tools\Sysmon'
+sysmon_service_name: "Sysmon64"
+sysmon_config_file: "sysmonconfig.xml"
