@@ -1,0 +1,9 @@
+---
+# Se rellenan desde group_vars/nyxcore.yml y group_vars/veloran.yml
+ad_ous: []
+ad_groups: []
+ad_groups_path: ""
+ad_users: []
+# Servidores miembro que se mueven a una OU propia (solo nyxcore)
+ad_member_servers: []
+ad_servers_ou: ""

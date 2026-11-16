@@ -1,0 +1,24 @@
+---
+# Subcategorías de Advanced Audit Policy a habilitar localmente (auditpol).
+# En los DCs, la GPO del rol ad_gpo_kerberos refuerza esto a nivel dominio.
+audit_subcategories:
+  - { name: "Logon",                      value: "Success and Failure" }
+  - { name: "Logoff",                     value: "Success" }
+  - { name: "Special Logon",              value: "Success" }
+  - { name: "Credential Validation",      value: "Success and Failure" }
+  - { name: "Kerberos Authentication Service",      value: "Success and Failure" }
+  - { name: "Kerberos Service Ticket Operations",   value: "Success and Failure" }
+  - { name: "Process Creation",           value: "Success" }
+  - { name: "Security Group Management",  value: "Success and Failure" }
+  - { name: "User Account Management",    value: "Success and Failure" }
+  - { name: "Computer Account Management", value: "Success and Failure" }
+  - { name: "Directory Service Access",   value: "Success and Failure" }
+  - { name: "Directory Service Changes",  value: "Success and Failure" }
+  - { name: "File Share",                 value: "Success and Failure" }
+  - { name: "Detailed File Share",        value: "Failure" }
+  - { name: "Sensitive Privilege Use",    value: "Success and Failure" }
+  - { name: "Audit Policy Change",        value: "Success and Failure" }
+
+# Habilitar auditoría de creación de procesos CON línea de comandos (muy útil
+# junto con Sysmon para correlacionar 4688 vs Sysmon EID 1).
+audit_cmdline_logging: true

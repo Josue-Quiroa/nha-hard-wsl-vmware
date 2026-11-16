@@ -1,0 +1,82 @@
+---
+# ad_trust — Crea DNS condicional en ambos DCs y un trust de BOSQUE
+# bidireccional nyxcore.lab <-> veloran.corp.
+# Se ejecuta en NYX-DC01; la parte de veloran se delega a VEL-DC01.
+
+- name: "DNS condicional {{ trust_remote_domain }} -> {{ trust_remote_dc_ip }} (en NYX-DC01)"
+  ansible.windows.win_shell: |
+    if (-not (Get-DnsServerZone -Name '{{ trust_remote_domain }}' -ErrorAction SilentlyContinue)) {
+      Add-DnsServerConditionalForwarderZone -Name '{{ trust_remote_domain }}' `
+        -MasterServers {{ trust_remote_dc_ip }} -ReplicationScope Forest
+      'CREATED'
+    } else { 'EXISTS' }
+  register: fwd_local
+  changed_when: "'CREATED' in fwd_local.stdout"
+
+- name: "DNS condicional {{ trust_local_domain }} -> {{ trust_local_dc_ip }} (en VEL-DC01)"
+  ansible.windows.win_shell: |
+    if (-not (Get-DnsServerZone -Name '{{ trust_local_domain }}' -ErrorAction SilentlyContinue)) {
+      Add-DnsServerConditionalForwarderZone -Name '{{ trust_local_domain }}' `
+        -MasterServers {{ trust_local_dc_ip }} -ReplicationScope Forest
+      'CREATED'
+    } else { 'EXISTS' }
+  delegate_to: "{{ trust_remote_dc_host }}"
+  register: fwd_remote
+  changed_when: "'CREATED' in fwd_remote.stdout"
+
+- name: "Verificar resolución DNS cruzada"
+  ansible.windows.win_shell: |
+    Clear-DnsClientCache
+    Resolve-DnsName -Name '{{ trust_remote_domain }}' -Type A -ErrorAction Stop | Out-Null
+    Resolve-DnsName -Name '_ldap._tcp.dc._msdcs.{{ trust_remote_domain }}' -Type SRV -ErrorAction Stop | Out-Null
+    'OK'
+  register: dns_check
+  until: dns_check.rc == 0
+  retries: 10
+  delay: 15
+  changed_when: false
+
+- name: "Crear trust de bosque {{ trust_direction }} con {{ trust_remote_domain }}"
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $local = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
+    try {
+      $null = $local.GetTrustRelationship('{{ trust_remote_domain }}')
+      'EXISTS'
+      exit 0
+    } catch { }
+    $ctx = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext(
+      'Forest', '{{ trust_remote_domain }}', '{{ trust_remote_admin }}', '{{ trust_remote_admin_password }}')
+    $remote = [System.DirectoryServices.ActiveDirectory.Forest]::GetForest($ctx)
+    $local.CreateTrustRelationship($remote, '{{ trust_direction }}')
+    'CREATED'
+  register: trust_create
+  changed_when: "'CREATED' in trust_create.stdout"
+  # runas evita el problema de doble salto al hablar con el otro bosque
+  become: true
+  become_method: ansible.builtin.runas
+  become_user: "{{ nyxcore_domain_admin }}"
+  vars:
+    ansible_become_password: "{{ nyxcore_domain_admin_password }}"
+  no_log: true
+
+- name: "(Opcional) Desactivar SID filtering en el trust"
+  ansible.windows.win_shell: |
+    $local = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
+    $local.SetSidFilteringStatus('{{ trust_remote_domain }}', $false)
+  when: trust_disable_sid_filtering | bool
+  become: true
+  become_method: ansible.builtin.runas
+  become_user: "{{ nyxcore_domain_admin }}"
+  vars:
+    ansible_become_password: "{{ nyxcore_domain_admin_password }}"
+
+- name: "Verificar trust"
+  ansible.windows.win_shell: |
+    Get-ADTrust -Filter * | Select-Object Name, Direction, ForestTransitive, SIDFilteringForestAware | Format-Table -AutoSize | Out-String
+  register: trust_list
+  changed_when: false
+
+- name: "Mostrar trusts"
+  ansible.builtin.debug:
+    msg: "{{ trust_list.stdout_lines }}"

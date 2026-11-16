@@ -1,0 +1,116 @@
+---
+# ad_users_groups — OUs, grupos y usuarios de ejemplo (genérico por dominio).
+# Se ejecuta en cada DC; los datos vienen de group_vars/<dominio>.yml.
+#
+# Incluye a propósito:
+#   * password documentada en el campo Description (svc_backup_legacy)
+#   * SPNs en cuentas de usuario (kerberoasting)
+#   * cuenta con DONT_REQ_PREAUTH (AS-REP roasting)
+#   * cifrado Kerberos solo RC4 en una cuenta "legacy"
+#   * delegación restringida con transición de protocolo
+#   * password reutilizada entre bosques
+
+- name: "Crear OUs"
+  microsoft.ad.ou:
+    name: "{{ item.name }}"
+    path: "{{ item.path }}"
+    state: present
+    protect_from_deletion: false
+  loop: "{{ ad_ous }}"
+  loop_control:
+    label: "OU={{ item.name }},{{ item.path }}"
+
+- name: "Crear grupos"
+  microsoft.ad.group:
+    name: "{{ item.name }}"
+    scope: "{{ item.scope }}"
+    category: security
+    description: "{{ item.description | default(omit) }}"
+    path: "{{ ad_groups_path if ad_groups_path | length > 0 else omit }}"
+    state: present
+  loop: "{{ ad_groups }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: "Reubicar grupos a {{ ad_groups_path }} si quedaron en otro contenedor"
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    Import-Module ActiveDirectory
+    $g = Get-ADGroup '{{ item.name }}' -ErrorAction SilentlyContinue
+    if (-not $g) { 'MISSING'; exit 0 }
+    $want = '{{ ad_groups_path }}'
+    if ($g.DistinguishedName -like "*,$want") { 'OK'; exit 0 }
+    Move-ADObject -Identity $g.DistinguishedName -TargetPath $want
+    'MOVED'
+  loop: "{{ ad_groups }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: grp_move
+  changed_when: "'MOVED' in grp_move.stdout"
+  when: ad_groups_path | length > 0
+
+- name: "Crear usuarios de ejemplo"
+  microsoft.ad.user:
+    name: "{{ item.sam }}"
+    sam_account_name: "{{ item.sam }}"
+    upn: "{{ item.sam }}@{{ domain_fqdn }}"
+    firstname: "{{ item.given | default(omit) }}"
+    surname: "{{ item.surname | default(omit) }}"
+    display_name: "{{ item.given | default('') }} {{ item.surname | default('') }}"
+    password: "{{ item.password }}"
+    update_password: on_create
+    path: "{{ item.path }}"
+    description: "{{ item.description | default(omit) }}"
+    enabled: true
+    password_never_expires: "{{ item.password_never_expires | default(false) }}"
+    groups:
+      add: "{{ item.groups | default([]) }}"
+    spn:
+      set: "{{ item.spn | default([]) }}"
+    attributes:
+      set: >-
+        {{ {}
+           | combine({'info': item.info} if item.info is defined else {})
+           | combine({'msDS-SupportedEncryptionTypes': item.enc_types} if item.enc_types is defined else {})
+           | combine({'msDS-AllowedToDelegateTo': item.delegate_to} if item.delegate_to is defined else {}) }}
+    state: present
+  loop: "{{ ad_users }}"
+  loop_control:
+    label: "{{ item.sam }}"
+  no_log: false   # LAB: se muestran para facilitar depuración
+
+- name: "Desactivar pre-autenticación Kerberos (AS-REP) donde se indique"
+  ansible.windows.win_shell: |
+    $u = Get-ADUser '{{ item.sam }}' -Properties DoesNotRequirePreAuth
+    if ($u.DoesNotRequirePreAuth) { 'OK'; exit 0 }
+    Set-ADAccountControl -Identity $u -DoesNotRequirePreAuth $true
+    'CHANGED'
+  loop: "{{ ad_users | selectattr('no_preauth', 'defined') | selectattr('no_preauth') | list }}"
+  loop_control:
+    label: "{{ item.sam }}"
+  register: preauth
+  changed_when: "'CHANGED' in preauth.stdout"
+
+- name: "Habilitar transición de protocolo (TrustedToAuthForDelegation)"
+  ansible.windows.win_shell: |
+    $u = Get-ADUser '{{ item.sam }}' -Properties TrustedToAuthForDelegation
+    if ($u.TrustedToAuthForDelegation) { 'OK'; exit 0 }
+    Set-ADAccountControl -Identity $u -TrustedToAuthForDelegation $true
+    'CHANGED'
+  loop: "{{ ad_users | selectattr('protocol_transition', 'defined') | selectattr('protocol_transition') | list }}"
+  loop_control:
+    label: "{{ item.sam }}"
+  register: t2a4d
+  changed_when: "'CHANGED' in t2a4d.stdout"
+
+- name: "Mover servidores miembro a su OU"
+  ansible.windows.win_shell: |
+    $c = Get-ADComputer '{{ item }}' -ErrorAction SilentlyContinue
+    if (-not $c) { 'MISSING'; exit 0 }
+    if ($c.DistinguishedName -like '*,{{ ad_servers_ou }}') { 'OK'; exit 0 }
+    Move-ADObject -Identity $c.DistinguishedName -TargetPath '{{ ad_servers_ou }}'
+    'MOVED'
+  loop: "{{ ad_member_servers }}"
+  register: moved
+  changed_when: "'MOVED' in moved.stdout"
+  when: ad_servers_ou | length > 0
