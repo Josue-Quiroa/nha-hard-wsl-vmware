@@ -1,0 +1,27 @@
+---
+# Fase 08 — GPO de auditoría avanzada + ajustes Kerberos/contraseñas.
+# Se usa become (runas) como Domain Admin: GroupPolicy escribe en SYSVOL y
+# así evitamos problemas de doble salto con WinRM/NTLM.
+- name: "08 | GPO de auditoría + Kerberos (nyxcore.lab)"
+  hosts: nyxcore_dcs
+  gather_facts: false
+  become: true
+  become_method: ansible.builtin.runas
+  become_user: "{{ nyxcore_domain_admin }}"
+  vars:
+    ansible_become_password: "{{ nyxcore_domain_admin_password }}"
+  roles:
+    - role: ad_gpo_kerberos
+
+- name: "08 | GPO de auditoría (veloran.corp, sin relajar Kerberos)"
+  hosts: veloran_dcs
+  gather_facts: false
+  become: true
+  become_method: ansible.builtin.runas
+  become_user: "{{ veloran_domain_admin }}"
+  vars:
+    ansible_become_password: "{{ veloran_domain_admin_password }}"
+    kerberos_allow_rc4: false
+    weaken_password_policy: false
+  roles:
+    - role: ad_gpo_kerberos

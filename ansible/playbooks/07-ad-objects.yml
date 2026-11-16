@@ -1,0 +1,18 @@
+---
+# Fase 07 — OUs, grupos y usuarios de ejemplo en AMBOS dominios.
+# Los datos vienen de group_vars/nyxcore.yml y group_vars/veloran.yml.
+
+- name: "07a | Objetos de AD en nyxcore.lab"
+  hosts: nyxcore_dcs
+  gather_facts: false
+  vars:
+    ad_member_servers: ["NYX-CA01", "NYX-FS01", "NYX-JUMP"]
+    ad_servers_ou: "OU=Servers,OU=NyxCorp,{{ nyxcore_domain_dn }}"
+  roles:
+    - role: ad_users_groups
+
+- name: "07b | Objetos de AD en veloran.corp"
+  hosts: veloran_dcs
+  gather_facts: false
+  roles:
+    - role: ad_users_groups

@@ -1,0 +1,8 @@
+---
+# Fase 09 — Share \\NYX-FS01\DeptConfigs con archivos de configuración de ejemplo
+# que incluyen cadenas de conexión falsas y una credencial "olvidada".
+- name: "09 | Share DeptConfigs + archivos de ejemplo"
+  hosts: file_servers
+  gather_facts: false
+  roles:
+    - role: ad_shares

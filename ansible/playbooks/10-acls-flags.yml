@@ -1,0 +1,7 @@
+---
+# Fase 10 — ACLs intencionalmente laxas, flags en cada máquina y jump limitado.
+- name: "10 | ACLs intencionales + flags + jump limitado"
+  hosts: windows
+  gather_facts: false
+  roles:
+    - role: ad_acls_flags
