@@ -1,0 +1,7 @@
+---
+adcs_ca_common_name: "NYXCORE-ROOT-CA"
+adcs_ca_type: "EnterpriseRootCA"
+adcs_validity_years: 10
+adcs_enable_web_enrollment: true
+adcs_legacy_template: "NyxLegacyUserAuth"
+adcs_template_enroll_group: "PKI-Operators"

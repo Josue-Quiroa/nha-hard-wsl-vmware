@@ -1,0 +1,5 @@
+---
+join_domain_fqdn: "{{ nyxcore_domain }}"
+join_dns_server: "{{ nyxcore_dc_ip }}"
+join_admin_user: "Administrator@{{ nyxcore_domain }}"
+join_admin_password: "{{ nyxcore_domain_admin_password }}"

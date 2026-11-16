@@ -1,0 +1,192 @@
+---
+# ad_adcs — Enterprise Root CA en NYX-CA01 + plantilla "heredada" revisable.
+#
+# La plantilla NyxLegacyUserAuth reproduce un error REALISTA (y frecuente):
+#   * el solicitante puede indicar el subject (ENROLLEE_SUPPLIES_SUBJECT)
+#   * EKU Client Authentication
+#   * sin aprobación de manager
+#   * enroll delegado a un grupo pequeño (PKI-Operators), no a Domain Users
+# Es material para practicar REVISIÓN de PKI (p.ej. con Certify/Certipy en modo
+# "find"). Este repo no incluye código de explotación.
+#
+# Las tareas que tocan AD/Configuration NC usan become (runas) como
+# NYXCORE\Administrator para evitar el problema de doble salto de WinRM.
+
+- name: "Instalar rol AD Certificate Services + herramientas"
+  ansible.windows.win_feature:
+    name:
+      - ADCS-Cert-Authority
+      - RSAT-ADCS
+      - RSAT-ADCS-Mgmt
+      - RSAT-AD-PowerShell
+    state: present
+    include_management_tools: true
+
+- name: "Instalar IIS + Web Enrollment (certsrv) si procede"
+  ansible.windows.win_feature:
+    name:
+      - Web-Server
+      - Web-Asp-Net45
+      - ADCS-Web-Enrollment
+    state: present
+    include_management_tools: true
+  when: adcs_enable_web_enrollment | bool
+
+- name: "¿Ya existe una CA configurada?"
+  ansible.windows.win_shell: |
+    if (Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Services\CertSvc\Configuration\{{ adcs_ca_common_name }}') { 'HASCA' } else { 'NOCA' }
+  register: ca_state
+  changed_when: false
+
+- name: "Configurar Enterprise Root CA {{ adcs_ca_common_name }}"
+  ansible.windows.win_shell: |
+    Install-AdcsCertificationAuthority `
+      -CAType {{ adcs_ca_type }} `
+      -CACommonName '{{ adcs_ca_common_name }}' `
+      -ValidityPeriod Years -ValidityPeriodUnits {{ adcs_validity_years }} `
+      -HashAlgorithmName SHA256 -KeyLength 2048 `
+      -Force
+  when: "'NOCA' in ca_state.stdout"
+  become: true
+  become_method: ansible.builtin.runas
+  become_user: "{{ nyxcore_domain_admin }}"
+  vars:
+    ansible_become_password: "{{ nyxcore_domain_admin_password }}"
+
+- name: "Asegurar servicio CertSvc iniciado"
+  ansible.windows.win_service:
+    name: CertSvc
+    state: started
+    start_mode: auto
+
+- name: "Configurar Web Enrollment (/certsrv sobre HTTP)"
+  ansible.windows.win_shell: |
+    Import-Module WebAdministration -ErrorAction SilentlyContinue
+    if (Get-WebApplication -Site 'Default Web Site' -Name 'CertSrv' -ErrorAction SilentlyContinue) { 'EXISTS'; exit 0 }
+    Install-AdcsWebEnrollment -Force | Out-Null
+    'CREATED'
+  register: web_enroll
+  changed_when: "'CREATED' in web_enroll.stdout"
+  when: adcs_enable_web_enrollment | bool
+  become: true
+  become_method: ansible.builtin.runas
+  become_user: "{{ nyxcore_domain_admin }}"
+  vars:
+    ansible_become_password: "{{ nyxcore_domain_admin_password }}"
+
+- name: "Crear plantilla heredada {{ adcs_legacy_template }}"
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    Import-Module ActiveDirectory
+    $name     = '{{ adcs_legacy_template }}'
+    $confDN   = (Get-ADRootDSE).configurationNamingContext
+    $pks      = "CN=Public Key Services,CN=Services,$confDN"
+    $tmplCont = "CN=Certificate Templates,$pks"
+    $oidCont  = "CN=OID,$pks"
+
+    if (Get-ADObject -LDAPFilter "(cn=$name)" -SearchBase $tmplCont -ErrorAction SilentlyContinue) { 'EXISTS'; exit 0 }
+
+    # OID único para la plantilla (bajo el OID raíz del bosque)
+    $forestOid = (Get-ADObject $oidCont -Properties 'msPKI-Cert-Template-OID').'msPKI-Cert-Template-OID'
+    $r1 = Get-Random -Minimum 1000000 -Maximum 99999999
+    $r2 = Get-Random -Minimum 1000000 -Maximum 99999999
+    $tmplOid = "$forestOid.$r1.$r2"
+    $oidName = "$r2." + ([guid]::NewGuid().ToString('N').Substring(0,32).ToUpper())
+    New-ADObject -Name $oidName -Type 'msPKI-Enterprise-Oid' -Path $oidCont -OtherAttributes @{
+      'flags' = [int]1; 'displayName' = $name; 'msPKI-Cert-Template-OID' = $tmplOid }
+
+    # Base: plantilla "User" (copiamos periodos, key usage y CSPs)
+    $src = Get-ADObject "CN=User,$tmplCont" -Properties *
+    $attrs = @{
+      'displayName'                          = $name
+      'flags'                                = [int]131680
+      'revision'                             = [int]100
+      'pKIDefaultKeySpec'                    = [int]1
+      'pKIMaxIssuingDepth'                   = [int]0
+      'pKICriticalExtensions'                = [string[]]@('2.5.29.15')
+      'pKIKeyUsage'                          = [byte[]]$src.pKIKeyUsage
+      'pKIExpirationPeriod'                  = [byte[]]$src.pKIExpirationPeriod
+      'pKIOverlapPeriod'                     = [byte[]]$src.pKIOverlapPeriod
+      'pKIDefaultCSPs'                       = [string[]]$src.pKIDefaultCSPs
+      'pKIExtendedKeyUsage'                  = [string[]]@('1.3.6.1.5.5.7.3.2')   # Client Auth
+      'msPKI-Certificate-Application-Policy' = [string[]]@('1.3.6.1.5.5.7.3.2')
+      'msPKI-Certificate-Name-Flag'          = [int]1          # ENROLLEE_SUPPLIES_SUBJECT
+      'msPKI-Enrollment-Flag'                = [int]0          # sin aprobación de manager
+      'msPKI-Private-Key-Flag'               = [int]16842768
+      'msPKI-RA-Signature'                   = [int]0
+      'msPKI-Minimal-Key-Size'               = [int]2048
+      'msPKI-Template-Schema-Version'        = [int]2
+      'msPKI-Template-Minor-Revision'        = [int]0
+      'msPKI-Cert-Template-OID'              = $tmplOid
+    }
+    New-ADObject -Name $name -Type 'pKICertificateTemplate' -Path $tmplCont -OtherAttributes $attrs
+    'CREATED'
+  register: tmpl_create
+  changed_when: "'CREATED' in tmpl_create.stdout"
+  become: true
+  become_method: ansible.builtin.runas
+  become_user: "{{ nyxcore_domain_admin }}"
+  vars:
+    ansible_become_password: "{{ nyxcore_domain_admin_password }}"
+
+# La fase 07 crea los grupos, pero ADCS (fase 06) ya necesita PKI-Operators.
+# Lo creamos aquí si no existe; la fase 07 lo moverá a su OU definitiva.
+- name: "Asegurar que existe el grupo {{ adcs_template_enroll_group }}"
+  ansible.windows.win_shell: |
+    Import-Module ActiveDirectory
+    if (Get-ADGroup -Filter "Name -eq '{{ adcs_template_enroll_group }}'") { 'EXISTS'; exit 0 }
+    New-ADGroup -Name '{{ adcs_template_enroll_group }}' -GroupScope Global -GroupCategory Security `
+      -Description 'Operadores de la PKI'
+    'CREATED'
+  register: pki_grp
+  changed_when: "'CREATED' in pki_grp.stdout"
+  become: true
+  become_method: ansible.builtin.runas
+  become_user: "{{ nyxcore_domain_admin }}"
+  vars:
+    ansible_become_password: "{{ nyxcore_domain_admin_password }}"
+
+- name: "Delegar Enroll de la plantilla a {{ adcs_template_enroll_group }}"
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    Import-Module ActiveDirectory
+    $confDN = (Get-ADRootDSE).configurationNamingContext
+    $dn  = "CN={{ adcs_legacy_template }},CN=Certificate Templates,CN=Public Key Services,CN=Services,$confDN"
+    $sid = (Get-ADGroup '{{ adcs_template_enroll_group }}').SID
+    $enroll = [Guid]'0e10c968-78fb-11d2-90d4-00c04f79dc55'   # Certificate-Enrollment
+    $acl = Get-Acl "AD:$dn"
+    $has = $acl.Access | Where-Object {
+      $_.ObjectType -eq $enroll -and
+      $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]) -eq $sid }
+    if ($has) { 'EXISTS'; exit 0 }
+    $acl.AddAccessRule((New-Object System.DirectoryServices.ActiveDirectoryAccessRule(
+      $sid, 'ExtendedRight', 'Allow', $enroll)))
+    $acl.AddAccessRule((New-Object System.DirectoryServices.ActiveDirectoryAccessRule(
+      $sid, 'ReadProperty', 'Allow')))
+    Set-Acl "AD:$dn" $acl
+    'CHANGED'
+  register: tmpl_acl
+  changed_when: "'CHANGED' in tmpl_acl.stdout"
+  become: true
+  become_method: ansible.builtin.runas
+  become_user: "{{ nyxcore_domain_admin }}"
+  vars:
+    ansible_become_password: "{{ nyxcore_domain_admin_password }}"
+
+- name: "Publicar la plantilla en la CA"
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    if (Get-CATemplate | Where-Object Name -eq '{{ adcs_legacy_template }}') { 'EXISTS'; exit 0 }
+    Add-CATemplate -Name '{{ adcs_legacy_template }}' -Force
+    'PUBLISHED'
+  register: tmpl_pub
+  changed_when: "'PUBLISHED' in tmpl_pub.stdout"
+  # La plantilla recién creada tarda un poco en ser visible para la CA
+  until: tmpl_pub.rc == 0
+  retries: 10
+  delay: 15
+  become: true
+  become_method: ansible.builtin.runas
+  become_user: "{{ nyxcore_domain_admin }}"
+  vars:
+    ansible_become_password: "{{ nyxcore_domain_admin_password }}"
