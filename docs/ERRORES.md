@@ -19,6 +19,7 @@ Guía rápida de los errores más habituales al montar el lab. Están ordenados 
   Get-NetConnectionProfile | Set-NetConnectionProfile -NetworkCategory Private
   ```
 - La VM no tiene la IP que crees: `ipconfig` en la VM.
+- `New-NetIPAddress` falla o deja dos IPs porque la NIC sigue en DHCP. Quita la IP automática y desactiva DHCP (ver `examples/static-ip-snippets.ps1`) y vuelve a asignar la estática.
 
 ### `ntlm: the specified credentials were rejected by the server` / 401
 - La contraseña de `Administrator` de la VM no coincide con `lab_admin_password` en `ansible/group_vars/all.yml`.
@@ -35,8 +36,10 @@ Test-WSMan 192.168.56.10
 ```
 Ansible/pywinrm desde WSL **no** usa TrustedHosts.
 
-### `Operation timed out` durante promoción o ADCS
-Es normal que algunas tareas tarden. Los timeouts de WinRM están en `ansible/inventory.ini` (`ansible_winrm_operation_timeout_sec` / `ansible_winrm_read_timeout_sec`). Si persiste, vuelve a ejecutar la misma fase: los roles son idempotentes.
+### `Operation timed out` / `connection closed` durante promoción o ADCS
+Es normal que algunas tareas tarden. Los timeouts de WinRM están en `ansible/inventory.ini` (`ansible_winrm_operation_timeout_sec` / `ansible_winrm_read_timeout_sec`). En `ansible.cfg`, `persistent_connection.command_timeout` debe ser **mayor** que esos valores (por defecto 180 s). Si persiste, vuelve a ejecutar la misma fase: los roles son idempotentes.
+
+Tras instalar el rol AD DS / ADCS / GPMC, Windows puede pedir reinicio. Los roles lo hacen solos si `reboot_required` es verdadero; si cortaste la ejecución a mitad, espera a que la VM arranque y relanza la fase.
 
 ---
 

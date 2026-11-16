@@ -1,7 +1,17 @@
 # =============================================================================
 # examples/static-ip-snippets.ps1 — Referencia (NO es parte del despliegue).
 # Comandos para la post-instalación manual de cada VM (README, paso 3).
-# Cambia el alias de interfaz si no es 'Ethernet0' (Get-NetAdapter).
+# Confirma el alias de interfaz con Get-NetAdapter (puede no ser 'Ethernet0').
+#
+# Si la NIC aún tiene una IP por DHCP, quítala antes de asignar la estática:
+#   Get-NetIPAddress -InterfaceAlias Ethernet0 -AddressFamily IPv4 |
+#     Where-Object { $_.PrefixOrigin -ne 'Manual' } |
+#     Remove-NetIPAddress -Confirm:$false
+#   Set-NetIPInterface -InterfaceAlias Ethernet0 -AddressFamily IPv4 -Dhcp Disabled
+#
+# En host-only puro no hace falta DefaultGateway. Si tu VMnet tiene gateway
+# (p.ej. 192.168.56.1), añádelo a New-NetIPAddress:
+#   -DefaultGateway 192.168.56.1
 # =============================================================================
 
 # --- NYX-DC01 (192.168.56.10) ---

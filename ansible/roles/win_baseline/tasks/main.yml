@@ -1,8 +1,9 @@
 ---
-# win_baseline — carpetas base del lab, zona horaria y notas de sincronización.
+# win_baseline — carpetas base del lab y servicio de tiempo (w32time).
 # NOTA sobre tiempo/Kerberos: en un lab AD el clock skew > 5 min rompe Kerberos.
 # El DC PDC debe ser la fuente de tiempo; los miembros sincronizan contra el DC.
-# Aquí solo dejamos todo en UTC y habilitamos w32time; el dominio ajusta el resto.
+# Este rol solo habilita w32time; no cambia la zona horaria. Tras promover los
+# DCs, desactiva "Synchronize guest time with host" en VMware Tools (ver ERRORES.md).
 
 - name: "Crear carpetas base del laboratorio"
   ansible.windows.win_file:

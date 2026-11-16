@@ -7,7 +7,7 @@
   ansible.windows.win_shell: |
     if (-not (Get-DnsServerZone -Name '{{ trust_remote_domain }}' -ErrorAction SilentlyContinue)) {
       Add-DnsServerConditionalForwarderZone -Name '{{ trust_remote_domain }}' `
-        -MasterServers {{ trust_remote_dc_ip }} -ReplicationScope Forest
+        -MasterServers '{{ trust_remote_dc_ip }}' -ReplicationScope Forest
       'CREATED'
     } else { 'EXISTS' }
   register: fwd_local
@@ -17,7 +17,7 @@
   ansible.windows.win_shell: |
     if (-not (Get-DnsServerZone -Name '{{ trust_local_domain }}' -ErrorAction SilentlyContinue)) {
       Add-DnsServerConditionalForwarderZone -Name '{{ trust_local_domain }}' `
-        -MasterServers {{ trust_local_dc_ip }} -ReplicationScope Forest
+        -MasterServers '{{ trust_local_dc_ip }}' -ReplicationScope Forest
       'CREATED'
     } else { 'EXISTS' }
   delegate_to: "{{ trust_remote_dc_host }}"
@@ -27,7 +27,8 @@
 - name: "Verificar resolución DNS cruzada"
   ansible.windows.win_shell: |
     Clear-DnsClientCache
-    Resolve-DnsName -Name '{{ trust_remote_domain }}' -Type A -ErrorAction Stop | Out-Null
+    # El apex del dominio no siempre tiene registro A; el DC y el SRV de LDAP sí.
+    Resolve-DnsName -Name '{{ trust_remote_dc_host }}.{{ trust_remote_domain }}' -Type A -ErrorAction Stop | Out-Null
     Resolve-DnsName -Name '_ldap._tcp.dc._msdcs.{{ trust_remote_domain }}' -Type SRV -ErrorAction Stop | Out-Null
     'OK'
   register: dns_check
