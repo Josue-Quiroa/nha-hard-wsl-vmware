@@ -21,6 +21,7 @@
       - RSAT-AD-PowerShell
     state: present
     include_management_tools: true
+  register: adcs_feature
 
 - name: "Instalar IIS + Web Enrollment (certsrv) si procede"
   ansible.windows.win_feature:
@@ -30,7 +31,16 @@
       - ADCS-Web-Enrollment
     state: present
     include_management_tools: true
+  register: web_feature
   when: adcs_enable_web_enrollment | bool
+
+- name: "Reiniciar si la instalación de ADCS/IIS lo requiere"
+  ansible.windows.win_reboot:
+    reboot_timeout: 600
+    post_reboot_delay: 30
+  when: >-
+    (adcs_feature.reboot_required | default(false))
+    or (web_feature.reboot_required | default(false))
 
 - name: "¿Ya existe una CA configurada?"
   ansible.windows.win_shell: |

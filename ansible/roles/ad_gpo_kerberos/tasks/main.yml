@@ -15,6 +15,13 @@
   ansible.windows.win_feature:
     name: GPMC
     state: present
+  register: gpmc_feature
+
+- name: "Reiniciar si la instalación de GPMC lo requiere"
+  ansible.windows.win_reboot:
+    reboot_timeout: 600
+    post_reboot_delay: 30
+  when: gpmc_feature.reboot_required | default(false)
 
 # ---------------------------------------------------------------------------
 # 1. GPO de Advanced Audit Policy
