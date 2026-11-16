@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Groups clsid="{3125E937-EB16-4b4c-9934-544FC6D24D26}"><User clsid="{DF5F1855-51E5-4d24-8B1A-D9BDE98BA1D1}" name="adm.backup" image="2" changed="2019-06-11 09:42:17" uid="{9B3F6A2C-41D7-4E0B-8C55-2F1E7A9D3B60}"><Properties action="U" newName="" fullName="Backup Admin" description="Cuenta de backup para servidores" cpassword="tGH8tbTHq8mEcOdXd+wT5V1LfHIAnUN2oohGiaNgyUY" changeLogon="0" noChange="1" neverExpires="1" acctDisabled="0" userName="NYXCORE\adm.backup"/></User>
+</Groups>

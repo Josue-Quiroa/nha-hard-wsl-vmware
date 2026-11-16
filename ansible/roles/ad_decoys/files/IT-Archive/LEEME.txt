@@ -1,0 +1,8 @@
+IT-Archive$ - Archivo historico de IT (2015-2020)
+=================================================
+SOLO LABORATORIO. Datos FICTICIOS.
+
+  GPO-Backup-2019\  -> export de GPOs antes de la limpieza de 2019
+  scripts\          -> scripts de tareas programadas antiguas
+
+No modificar. Solo lectura.

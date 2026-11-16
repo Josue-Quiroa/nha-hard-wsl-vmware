@@ -1,0 +1,3 @@
+GPO: "Servers - Local Backup Account" (exportada 2019-06-11)
+Estado: ELIMINADA del dominio en la limpieza de GPP (MS14-025).
+Vinculada a: OU=Servers,OU=NyxCorp

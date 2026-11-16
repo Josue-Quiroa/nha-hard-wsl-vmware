@@ -1,0 +1,10 @@
+Migracion a PAM - notas de la reunion (marzo 2020). LAB: FICTICIO
+-----------------------------------------------------------------
+- Los grupos *-Legacy (SrvOps-Legacy, Backup-Admins-Legacy, SQL-Admins-Legacy)
+  quedan "congelados". Helpdesk mantiene control sobre SrvOps-Legacy hasta que
+  se de de baja el grupo.
+- VELORAN: el grupo Tier0-Ops-Legacy se migra al nuevo modelo de tiers en Q3.
+  La cuenta vel.svc_deploy sigue usando la credencial del script de export.
+- PKI: la plantilla de VPN (NyxVPNLegacyAuth) queda publicada hasta cerrar el
+  proyecto Always On.
+- Pendiente: revisar quien conoce todavia la password de adm.backup.
