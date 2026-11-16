@@ -1,0 +1,87 @@
+---
+# ad_shares — \\NYX-FS01\DeptConfigs con archivos de configuración de ejemplo
+# (cadenas de conexión y credenciales FICTICIAS, solo LAB).
+#
+#   DeptConfigs\            -> Authenticated Users: lectura (demasiado amplio)
+#   DeptConfigs\Finance\    -> hereda (todo el mundo lee)
+#   DeptConfigs\HR\         -> hereda (todo el mundo lee)
+#   DeptConfigs\IT-Ops\     -> solo IT-Ops-Readers (+ admins). Aquí está db-conn.txt
+#   Backups$  (oculto)      -> FileShare-Admins
+
+- name: "Crear carpetas del share"
+  ansible.windows.win_file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - "{{ share_path }}"
+    - "{{ hidden_share_path }}"
+
+- name: "Copiar archivos de ejemplo al share"
+  ansible.windows.win_copy:
+    src: DeptConfigs/
+    dest: '{{ share_path }}\'
+
+- name: "NTFS raíz: lectura para {{ share_read_principal }} (laxo a propósito)"
+  ansible.windows.win_acl:
+    path: "{{ share_path }}"
+    user: "{{ share_read_principal }}"
+    rights: ReadAndExecute
+    type: allow
+    inherit: ContainerInherit, ObjectInherit
+    propagation: None
+    state: present
+
+- name: "NTFS IT-Ops: romper herencia y limitar a {{ itops_reader_group }}"
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $p   = '{{ share_path }}\IT-Ops'
+    $acl = Get-Acl $p
+    $ids = $acl.Access | ForEach-Object { $_.IdentityReference.Value }
+    if ($acl.AreAccessRulesProtected -and ($ids -contains '{{ itops_reader_group }}') -and -not ($ids -match 'Authenticated Users')) {
+      'UNCHANGED'; exit 0
+    }
+    icacls $p /inheritance:d | Out-Null
+    icacls $p /remove:g "*S-1-5-11" /T /C | Out-Null           # Authenticated Users
+    icacls $p /remove:g "*S-1-5-32-545" /T /C | Out-Null       # BUILTIN\Users
+    icacls $p /grant "{{ itops_reader_group }}:(OI)(CI)RX" | Out-Null
+    'CHANGED'
+  register: itops_acl
+  changed_when: "'CHANGED' in itops_acl.stdout"
+
+- name: "Publicar share {{ share_name }}"
+  ansible.windows.win_share:
+    name: "{{ share_name }}"
+    path: "{{ share_path }}"
+    description: "Configuraciones por departamento (LAB)"
+    full: "Administrators"
+    read: "{{ share_read_principal }}"
+    list: true
+    caching_mode: None
+
+- name: "NTFS Backups$: solo {{ hidden_share_reader }} y admins"
+  ansible.windows.win_shell: |
+    $p = '{{ hidden_share_path }}'
+    $acl = Get-Acl $p
+    if ($acl.AreAccessRulesProtected) { 'UNCHANGED'; exit 0 }
+    icacls $p /inheritance:r /grant:r "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" "{{ hidden_share_reader }}:(OI)(CI)RX" | Out-Null
+    'CHANGED'
+  register: bkp_acl
+  changed_when: "'CHANGED' in bkp_acl.stdout"
+
+- name: "Publicar share oculto {{ hidden_share_name }}"
+  ansible.windows.win_share:
+    name: "{{ hidden_share_name }}"
+    path: "{{ hidden_share_path }}"
+    description: "Repositorio de backup"
+    full: "Administrators"
+    read: "{{ hidden_share_reader }}"
+    caching_mode: None
+
+- name: "Dejar un 'backup' de ejemplo en el share oculto"
+  ansible.windows.win_copy:
+    dest: '{{ hidden_share_path }}\nightly-job.txt'
+    content: |
+      Tarea nocturna (LAB, ficticia)
+      RunAs: NYXCORE\adm.old.helio
+      Destino: \\NYX-FS01\Backups$
+      Ultima ejecucion correcta: 2021-03-14

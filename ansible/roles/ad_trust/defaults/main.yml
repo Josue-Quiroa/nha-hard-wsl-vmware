@@ -1,0 +1,12 @@
+---
+trust_local_domain: "{{ nyxcore_domain }}"
+trust_remote_domain: "{{ veloran_domain }}"
+trust_remote_dc_ip: "{{ veloran_dc_ip }}"
+trust_local_dc_ip: "{{ nyxcore_dc_ip }}"
+trust_remote_dc_host: "VEL-DC01"
+trust_remote_admin: "{{ veloran_domain_admin }}"
+trust_remote_admin_password: "{{ veloran_domain_admin_password }}"
+trust_direction: "Bidirectional"      # Inbound | Outbound | Bidirectional
+# Variación opcional "menos obvia": desactivar SID filtering en el trust.
+# Por defecto false (comportamiento seguro por defecto de Windows).
+trust_disable_sid_filtering: false
