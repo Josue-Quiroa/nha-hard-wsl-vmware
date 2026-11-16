@@ -1,0 +1,10 @@
+# ==========================================================================
+#  Runbook - Backup nocturno Veeam B&R 9.5  (version 2019, OBSOLETA?)
+#  LAB: datos FICTICIOS
+# ==========================================================================
+1. Conectar a la consola Veeam (NYX-BKP01) con la cuenta de servicio de backup:
+      Usuario : NYXCORE\adm.backup
+      Password: Bkp-Adm!2020        <- actualizada en el cambio de enero
+2. Verificar que los jobs "DC-Nightly" y "FS-Nightly" terminaron en Success.
+3. Si el job de FS falla, relanzar desde \\NYX-FS01\IT-Archive$\scripts.
+4. Escalar a Infraestructura (ext. 4410) si fallan dos noches seguidas.

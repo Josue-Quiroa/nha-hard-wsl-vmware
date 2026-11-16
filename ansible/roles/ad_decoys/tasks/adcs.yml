@@ -1,0 +1,109 @@
+---
+# ad_decoys / adcs.yml — se ejecuta en NYX-CA01 (después de las fases 06 y 07).
+#
+# Plantilla señuelo {{ decoy_adcs_template }}: mismos flags "peligrosos" que la
+# plantilla real (ENROLLEE_SUPPLIES_SUBJECT + Client Auth + sin aprobación),
+# pero el ÚNICO grupo con Enroll es {{ decoy_adcs_enroll_group }}, que está
+# VACÍO y sobre el que nadie del lab tiene permisos de escritura.
+# Certify/Certipy la listarán como interesante; en la práctica no se puede usar.
+# Usa la misma técnica LDAP que ad_adcs (runas Domain Admin).
+
+- name: "Crear plantilla señuelo {{ decoy_adcs_template }}"
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    Import-Module ActiveDirectory
+    $name     = '{{ decoy_adcs_template }}'
+    $confDN   = (Get-ADRootDSE).configurationNamingContext
+    $pks      = "CN=Public Key Services,CN=Services,$confDN"
+    $tmplCont = "CN=Certificate Templates,$pks"
+    $oidCont  = "CN=OID,$pks"
+
+    if (Get-ADObject -LDAPFilter "(cn=$name)" -SearchBase $tmplCont -ErrorAction SilentlyContinue) { 'EXISTS'; exit 0 }
+
+    $forestOid = (Get-ADObject $oidCont -Properties 'msPKI-Cert-Template-OID').'msPKI-Cert-Template-OID'
+    $r1 = Get-Random -Minimum 1000000 -Maximum 99999999
+    $r2 = Get-Random -Minimum 1000000 -Maximum 99999999
+    $tmplOid = "$forestOid.$r1.$r2"
+    $oidName = "$r2." + ([guid]::NewGuid().ToString('N').Substring(0,32).ToUpper())
+    New-ADObject -Name $oidName -Type 'msPKI-Enterprise-Oid' -Path $oidCont -OtherAttributes @{
+      'flags' = [int]1; 'displayName' = $name; 'msPKI-Cert-Template-OID' = $tmplOid }
+
+    $src = Get-ADObject "CN=User,$tmplCont" -Properties *
+    $attrs = @{
+      'displayName'                          = $name
+      'flags'                                = [int]131680
+      'revision'                             = [int]100
+      'pKIDefaultKeySpec'                    = [int]1
+      'pKIMaxIssuingDepth'                   = [int]0
+      'pKICriticalExtensions'                = [string[]]@('2.5.29.15')
+      'pKIKeyUsage'                          = [byte[]]$src.pKIKeyUsage
+      'pKIExpirationPeriod'                  = [byte[]]$src.pKIExpirationPeriod
+      'pKIOverlapPeriod'                     = [byte[]]$src.pKIOverlapPeriod
+      'pKIDefaultCSPs'                       = [string[]]$src.pKIDefaultCSPs
+      'pKIExtendedKeyUsage'                  = [string[]]@('1.3.6.1.5.5.7.3.2')
+      'msPKI-Certificate-Application-Policy' = [string[]]@('1.3.6.1.5.5.7.3.2')
+      'msPKI-Certificate-Name-Flag'          = [int]1
+      'msPKI-Enrollment-Flag'                = [int]0
+      'msPKI-Private-Key-Flag'               = [int]16842768
+      'msPKI-RA-Signature'                   = [int]0
+      'msPKI-Minimal-Key-Size'               = [int]2048
+      'msPKI-Template-Schema-Version'        = [int]2
+      'msPKI-Template-Minor-Revision'        = [int]0
+      'msPKI-Cert-Template-OID'              = $tmplOid
+    }
+    New-ADObject -Name $name -Type 'pKICertificateTemplate' -Path $tmplCont -OtherAttributes $attrs
+    'CREATED'
+  register: decoy_tmpl
+  changed_when: "'CREATED' in decoy_tmpl.stdout"
+  become: true
+  become_method: ansible.builtin.runas
+  become_user: "{{ nyxcore_domain_admin }}"
+  vars:
+    ansible_become_password: "{{ nyxcore_domain_admin_password }}"
+
+- name: "Enroll de {{ decoy_adcs_template }} SOLO para {{ decoy_adcs_enroll_group }} (vacío)"
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    Import-Module ActiveDirectory
+    $grp = Get-ADGroup '{{ decoy_adcs_enroll_group }}' -Properties member
+    # Salvaguarda: si alguien metió miembros, la plantilla dejaría de ser señuelo
+    if ($grp.member.Count -gt 0) { throw "{{ decoy_adcs_enroll_group }} debe estar VACÍO (tiene $($grp.member.Count) miembros)" }
+    $confDN = (Get-ADRootDSE).configurationNamingContext
+    $dn  = "CN={{ decoy_adcs_template }},CN=Certificate Templates,CN=Public Key Services,CN=Services,$confDN"
+    $sid = $grp.SID
+    $enroll = [Guid]'0e10c968-78fb-11d2-90d4-00c04f79dc55'
+    $acl = Get-Acl "AD:$dn"
+    $has = $acl.Access | Where-Object {
+      $_.ObjectType -eq $enroll -and
+      $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]) -eq $sid }
+    if ($has) { 'EXISTS'; exit 0 }
+    $acl.AddAccessRule((New-Object System.DirectoryServices.ActiveDirectoryAccessRule(
+      $sid, 'ExtendedRight', 'Allow', $enroll)))
+    $acl.AddAccessRule((New-Object System.DirectoryServices.ActiveDirectoryAccessRule(
+      $sid, 'ReadProperty', 'Allow')))
+    Set-Acl "AD:$dn" $acl
+    'CHANGED'
+  register: decoy_tmpl_acl
+  changed_when: "'CHANGED' in decoy_tmpl_acl.stdout"
+  become: true
+  become_method: ansible.builtin.runas
+  become_user: "{{ nyxcore_domain_admin }}"
+  vars:
+    ansible_become_password: "{{ nyxcore_domain_admin_password }}"
+
+- name: "Publicar la plantilla señuelo en la CA"
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    if (Get-CATemplate | Where-Object Name -eq '{{ decoy_adcs_template }}') { 'EXISTS'; exit 0 }
+    Add-CATemplate -Name '{{ decoy_adcs_template }}' -Force
+    'PUBLISHED'
+  register: decoy_tmpl_pub
+  changed_when: "'PUBLISHED' in decoy_tmpl_pub.stdout"
+  until: decoy_tmpl_pub.rc == 0
+  retries: 10
+  delay: 15
+  become: true
+  become_method: ansible.builtin.runas
+  become_user: "{{ nyxcore_domain_admin }}"
+  vars:
+    ansible_become_password: "{{ nyxcore_domain_admin_password }}"

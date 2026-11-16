@@ -1,0 +1,6 @@
+Archive - configuraciones antiguas (2019-2020)
+==============================================
+SOLO LABORATORIO. Datos FICTICIOS.
+
+Copias de configuracion de sistemas ya migrados. Se conservan "por si acaso"
+hasta que Auditoria confirme que se pueden borrar (ticket CHG-0904).
