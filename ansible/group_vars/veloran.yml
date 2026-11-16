@@ -1,0 +1,63 @@
+---
+# =============================================================================
+# group_vars/veloran.yml — Dominio veloran.corp (VEL-DC01)
+#  ##  LAB ONLY: contraseñas débiles/reutilizadas a propósito  ##
+# =============================================================================
+domain_fqdn: "{{ veloran_domain }}"
+domain_netbios: "{{ veloran_netbios }}"
+domain_dn: "{{ veloran_domain_dn }}"
+domain_dc_ip: "{{ veloran_dc_ip }}"
+domain_admin_user: "{{ veloran_domain_admin }}"
+domain_admin_password: "{{ veloran_domain_admin_password }}"
+
+ad_ous:
+  - { name: "VelCorp",         path: "{{ veloran_domain_dn }}" }
+  - { name: "Ops",             path: "OU=VelCorp,{{ veloran_domain_dn }}" }
+  - { name: "ServiceAccounts", path: "OU=VelCorp,{{ veloran_domain_dn }}" }
+  - { name: "Groups",          path: "OU=VelCorp,{{ veloran_domain_dn }}" }
+
+ad_groups:
+  - { name: "Vel-Ops",             scope: "global",      description: "Operaciones Veloran" }
+  - { name: "Vel-Partner-Readers", scope: "domainlocal", description: "Socios de NYXCORE con lectura (cross-forest)" }
+ad_groups_path: "OU=Groups,OU=VelCorp,{{ veloran_domain_dn }}"
+
+ad_users:
+  - sam: "l.marsh"
+    given: "Lena"
+    surname: "Marsh"
+    password: "Marsh.Ops2024!"
+    path: "OU=Ops,OU=VelCorp,{{ veloran_domain_dn }}"
+    description: "Operaciones"
+    groups: ["Vel-Ops"]
+
+  # FLAG-07 vive en el atributo "info" (legible por cualquier usuario autenticado,
+  # incluidos los de nyxcore.lab gracias al trust).
+  - sam: "svc_sync_veloran"
+    given: "svc"
+    surname: "sync veloran"
+    password: "Sync!Vel0ran-22"
+    path: "OU=ServiceAccounts,OU=VelCorp,{{ veloran_domain_dn }}"
+    description: "Sincronizacion de directorio con NYXCORE. No borrar."
+    info: "{{ flag07_value }}"
+    password_never_expires: true
+    groups: ["Vel-Ops"]
+    spn: ["HTTP/vel-sync.veloran.corp"]
+
+  # Cuenta "espejo" del admin heredado de nyxcore: MISMA password.
+  - sam: "helio.vadmin"
+    given: "Helio"
+    surname: "Veloran Admin"
+    password: "{{ helio_reused_password }}"
+    path: "OU=Ops,OU=VelCorp,{{ veloran_domain_dn }}"
+    description: "Cuenta espejo de NYXCORE\\adm.old.helio (proyecto fusion 2021)"
+    password_never_expires: true
+    groups: ["Domain Admins"]
+
+ad_acl_misconfigs: []
+
+# Miembros de otro bosque (Foreign Security Principals) añadidos a grupos locales
+# de dominio de veloran.corp. Lo aplica ad_acls_flags en VEL-DC01.
+cross_forest_memberships:
+  - group: "Vel-Partner-Readers"
+    foreign_domain: "{{ nyxcore_domain }}"
+    foreign_group: "Finance-Users"

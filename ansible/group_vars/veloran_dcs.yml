@@ -1,0 +1,3 @@
+---
+# Variables sólo para el/los DC(s) de veloran.corp (VEL-DC01).
+safe_mode_password: "{{ veloran_safe_mode_password }}"
